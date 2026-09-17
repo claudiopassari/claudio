@@ -102,7 +102,17 @@ select:focus-visible,
   padding: 16px 16px calc(16px + env(safe-area-inset-bottom));
 }
 
-.vista[hidden] { display: none; }
+/* !important necessario qui, unico caso nel foglio di stile: la vista
+   di lettura porta uno stile in linea (display:flex) che altrimenti
+   prevarrebbe sempre su questa regola, lasciando le due viste visibili
+   contemporaneamente indipendentemente dall'attributo hidden. */
+.vista[hidden] { display: none !important; }
+
+.vista--lettura {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+}
 
 /* Barra superiore */
 .barra-superiore {
@@ -962,7 +972,7 @@ select:focus-visible,
   </section>
 
   <!-- ===================== VISTA LETTURA ===================== -->
-  <section class="vista" id="vista-lettura" hidden style="display:flex; flex-direction:column; padding:0;">
+  <section class="vista vista--lettura" id="vista-lettura" hidden>
     <div class="barra-superiore">
       <button class="icona-bottone" id="bottone-indietro" title="Torna alla libreria" aria-label="Torna alla libreria">
         <svg viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
@@ -976,7 +986,7 @@ select:focus-visible,
       </button>
     </div>
 
-    <div class="vista" style="padding-bottom:8px;">
+    <div class="riga-strumenti-lettura" style="padding-bottom:8px;">
       <div class="riga-capitolo-nav">
         <button class="icona-bottone" id="bottone-capitolo-precedente" title="Capitolo precedente" aria-label="Capitolo precedente">
           <svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>
@@ -3581,7 +3591,7 @@ const ControllerTTS = (() => {
   const AMPIEZZA_FINESTRA = 60;
   const MARGINE_RICOSTRUZIONE = 15;
   const INTERVALLO_MINIMO_SALVATAGGIO_MS = 3000;
-  const VERSIONE_APP = "4.2";
+  const VERSIONE_APP = "4.3";
   const DATA_VERSIONE_APP = "11 settembre 2026";
 
   const DIMENSIONI_CARATTERE = [0.88, 0.96, 1.04, 1.14, 1.26, 1.4, 1.56];
