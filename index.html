@@ -963,7 +963,7 @@ select:focus-visible,
           <button class="bottone-importa secondario" id="bottone-apri-testo">Incolla testo</button>
         </div>
       </div>
-      <input type="file" id="input-file" accept=".pdf,.epub,.txt,.md,.mobi,.azw,.azw3,.prc" multiple hidden>
+      <input type="file" id="input-file" accept=".pdf,.epub,.txt,.md,.mobi,.azw,.azw3,.prc,application/pdf,application/epub+zip,text/plain,text/markdown,application/x-mobipocket-ebook,application/vnd.amazon.ebook,application/octet-stream" multiple hidden>
       <div class="griglia-libri" id="griglia-libri"></div>
       <div class="libreria-vuota" id="libreria-vuota" hidden>
         Nessun libro importato.<br>Tocca "Importa file" per caricare un PDF, EPUB, MOBI, AZW3 o TXT.
@@ -3591,7 +3591,7 @@ const ControllerTTS = (() => {
   const AMPIEZZA_FINESTRA = 60;
   const MARGINE_RICOSTRUZIONE = 15;
   const INTERVALLO_MINIMO_SALVATAGGIO_MS = 3000;
-  const VERSIONE_APP = "4.3";
+  const VERSIONE_APP = "4.4";
   const DATA_VERSIONE_APP = "11 settembre 2026";
 
   const DIMENSIONI_CARATTERE = [0.88, 0.96, 1.04, 1.14, 1.26, 1.4, 1.56];
