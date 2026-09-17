@@ -11,7 +11,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="CLaudio">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="description" content="Lettore di PDF, EPUB, MOBI, AZW3 e TXT con sintesi vocale, equalizzatore e libreria locale.">
+<meta name="description" content="Lettore di PDF, EPUB, MOBI, AZW3 e TXT con sintesi vocale neurale, equalizzatore e libreria locale.">
 <style>
 /* =========================================================
    Lettore Ebook — fogli di stile
@@ -21,19 +21,22 @@
    ========================================================= */
 
 :root,
+/* Chiaro: neutro e freddo, carta bianca. In precedenza era crema e
+   risultava quindi indistinguibile dal tema seppia, che deve invece
+   essere l'opzione calda. */
 [data-theme="chiaro"], [data-theme="giorno"] {
-  --bg: #ECE6D6;
-  --bg-elevata: #DCD3B8;
-  --pannello: #F4F0E4;
-  --bordo: rgba(43, 38, 32, 0.18);
-  --testo: #2B2620;
-  --testo-attenuato: #5B5348;
+  --bg: #F2F3F5;
+  --bg-elevata: #E4E6EA;
+  --pannello: #FFFFFF;
+  --bordo: rgba(28, 30, 34, 0.14);
+  --testo: #1C1E22;
+  --testo-attenuato: #5A5F68;
   --accento: #1F4B4A;
-  --accento-testo: #F4F0E4;
+  --accento-testo: #FFFFFF;
   --accento-secondario: #8A4B32;
-  --evidenziazione: #D8C88A;
+  --evidenziazione: #FFE9A8;
   --pericolo: #8A3324;
-  --ombra: rgba(43, 38, 32, 0.12);
+  --ombra: rgba(28, 30, 34, 0.10);
 }
 
 [data-theme="scuro"], [data-theme="notte"] {
@@ -112,6 +115,14 @@ select:focus-visible,
   display: flex;
   flex-direction: column;
   padding: 0;
+  overflow: hidden; /* la sezione non scorre per intero: solo l'area di testo al suo interno, altrimenti i comandi in fondo restano raggiungibili solo scorrendo oltre l'intero libro */
+}
+
+.area-testo-scorrevole {
+  flex: 1;
+  min-height: 0; /* indispensabile in un contenitore flex perché overflow-y:auto abbia effetto, altrimenti il figlio si espande oltre il genitore invece di generare una barra di scorrimento propria */
+  overflow-y: auto;
+  padding: 0 16px;
 }
 
 /* Barra superiore */
@@ -292,6 +303,12 @@ select:focus-visible,
   color: var(--testo-attenuato);
   margin-bottom: 8px;
   text-transform: none;
+}
+
+.riga-strumenti-lettura {
+  flex-shrink: 0;
+  padding-left: 16px;
+  padding-right: 16px;
 }
 
 .riga-capitolo-nav {
@@ -630,9 +647,19 @@ select:focus-visible,
 
 .versione-app {
   text-align: center;
-  font-size: 0.72rem;
+  font-size: 0.74rem;
+  line-height: 1.6;
   color: var(--testo-attenuato);
-  margin-top: 16px;
+  margin-top: 20px;
+  padding: 12px 0 4px 0;
+  border-top: 1px solid var(--bordo);
+}
+
+.versione-app strong {
+  display: block;
+  font-size: 0.82rem;
+  color: var(--testo);
+  font-weight: 600;
 }
 
 /* ---------- Navigazione inferiore ---------- */
@@ -666,10 +693,10 @@ select:focus-visible,
 /* ---------- Temi aggiuntivi ---------- */
 
 [data-theme="seppia"] {
-  --bg: #E8DCC4; --bg-elevata: #DCCFB2; --pannello: #F2E9D5;
-  --bordo: rgba(74, 59, 42, 0.2); --testo: #4A3B2A; --testo-attenuato: #7A6A55;
-  --accento: #7A5230; --accento-testo: #F2E9D5; --accento-secondario: #9A6B3F;
-  --evidenziazione: #D4BC8A; --pericolo: #8A3324; --ombra: rgba(74, 59, 42, 0.14);
+  --bg: #E3D2AE; --bg-elevata: #D4C098; --pannello: #F0E3C6;
+  --bordo: rgba(90, 68, 42, 0.26); --testo: #4A3418; --testo-attenuato: #7A6440;
+  --accento: #7A5230; --accento-testo: #F6EDD8; --accento-secondario: #9A6B3F;
+  --evidenziazione: #C9A961; --pericolo: #8A3324; --ombra: rgba(74, 59, 42, 0.18);
 }
 
 [data-theme="grigio"] {
@@ -938,6 +965,18 @@ select:focus-visible,
   pointer-events: none;
 }
 
+/* ---------- Prova voce e descrizione motore ---------- */
+
+#descrizione-motore { margin-top: 6px; }
+
+#stato-prova-voce:not(:empty) {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: var(--bg-elevata);
+  border-left: 3px solid var(--accento);
+}
+
 </style>
 </head>
 <body>
@@ -1001,6 +1040,9 @@ select:focus-visible,
         <label class="interruttore-ripeti"><input type="checkbox" id="chk-ripeti-coda"> Ripeti</label>
         <button id="bottone-leggi-selezione" disabled>Leggi selezione</button>
       </div>
+    </div>
+
+    <div class="area-testo-scorrevole">
       <div class="pannello-testo" id="pannello-testo"></div>
     </div>
 
@@ -1229,26 +1271,57 @@ select:focus-visible,
     <div class="riga-impostazione">
       <label for="selettore-motore">Motore di sintesi vocale</label>
       <select id="selettore-motore"></select>
+      <p class="nota-impostazione" id="descrizione-motore"></p>
     </div>
 
     <div class="riga-impostazione">
       <label for="selettore-voce">Voce</label>
       <select id="selettore-voce"></select>
-      <button class="bottone-secondario" id="bottone-prova-voce" style="margin-top:8px; width:100%;">Ascolta un esempio</button>
     </div>
 
     <div class="riga-impostazione" id="sezione-piper" hidden>
-      <label for="selettore-voce-piper">Voce neurale</label>
-      <select id="selettore-voce-piper"></select>
-      <button class="bottone-secondario" id="bottone-scarica-voce" style="margin-top:8px; width:100%;">Scarica la voce selezionata</button>
+      <button class="bottone-secondario" id="bottone-scarica-voce" style="width:100%;">Prepara il modello vocale</button>
       <p class="nota-impostazione" id="stato-scaricamento-piper"></p>
       <div id="diagnostica-piper"></div>
       <button class="bottone-secondario" id="bottone-riverifica-piper" style="margin-top:8px; width:100%;">Ripeti la verifica dei requisiti</button>
     </div>
 
+    <div class="riga-impostazione">
+      <label for="selettore-frase-prova">Frase di prova</label>
+      <select id="selettore-frase-prova"></select>
+      <button class="bottone-secondario" id="bottone-prova-voce" style="margin-top:8px; width:100%;">Ascolta un esempio</button>
+      <p class="nota-impostazione" id="stato-prova-voce"></p>
+    </div>
+
+    <div class="riga-impostazione">
+      <label for="slider-volume">Volume: <span id="volume-etichetta">100%</span></label>
+      <input type="range" id="slider-volume" min="0" max="100" step="5" value="100">
+    </div>
+
     <div class="riga-impostazione" id="riga-tono">
       <label for="slider-tono">Tono della voce: <span id="tono-etichetta">1.0</span></label>
       <input type="range" id="slider-tono" min="0.5" max="2" step="0.1" value="1">
+      <p class="nota-impostazione">Il tono è regolabile solo con la sintesi di sistema: nei motori neurali è una caratteristica del modello vocale, non un parametro di riproduzione.</p>
+    </div>
+
+    <div class="riga-impostazione" id="sezione-equalizzatore-impostazioni">
+      <label>Equalizzatore</label>
+      <p class="nota-impostazione" id="avviso-equalizzatore-imp" hidden></p>
+      <div class="preset-equalizzatore" id="preset-equalizzatore-imp">
+        <button data-preset="neutro">Neutro</button>
+        <button data-preset="caldo">Voce calda</button>
+        <button data-preset="chiarezza">Chiarezza</button>
+        <button data-preset="notte">Notte</button>
+      </div>
+      <div class="bande-equalizzatore" id="bande-equalizzatore-imp">
+        <label for="eq-bassi-imp">Bassi: <span id="eq-bassi-imp-etichetta">0 dB</span></label>
+        <input type="range" id="eq-bassi-imp" min="-12" max="12" step="1" value="0">
+        <label for="eq-medi-imp">Medi: <span id="eq-medi-imp-etichetta">0 dB</span></label>
+        <input type="range" id="eq-medi-imp" min="-12" max="12" step="1" value="0">
+        <label for="eq-alti-imp">Alti: <span id="eq-alti-imp-etichetta">0 dB</span></label>
+        <input type="range" id="eq-alti-imp" min="-12" max="12" step="1" value="0">
+        <label><input type="checkbox" id="eq-compressione-imp"> Livella i picchi di volume</label>
+      </div>
     </div>
 
     <div class="gruppo-bottoni-cassetto">
@@ -2784,51 +2857,107 @@ async function analizzaMOBI(file) {
 
 /* ===== js/tts-neurale.js ===== */
 /* =========================================================
-   tts-neurale.js — motori di sintesi neurale (Piper)
+   tts-neurale.js — motori di sintesi neurale
 
-   A differenza della Web Speech API, che pronuncia direttamente, i
-   motori neurali restituiscono un file audio che l'applicazione deve
-   poi riprodurre. Il controller distingue quindi due tipi di motore:
-   "nativo" (parla da sé) e "audio" (produce un blob da riprodurre).
+   DUE MOTORI, provati indipendentemente, così che il guasto di uno
+   non precluda l'altro:
 
-   REQUISITI, verificati prima di offrire il motore:
+   1. KOKORO (principale). Modello da 82 milioni di parametri con voci
+      italiane dedicate (Sara, Nicola), eseguito localmente via
+      Transformers.js. È mantenuto dalla stessa organizzazione che
+      cura Transformers.js, quindi la configurazione di
+      onnxruntime-web è gestita internamente e coerente.
 
-   - Contesto sicuro (HTTPS o localhost). La documentazione della
-     File System Standard è esplicita: navigator.storage.getDirectory()
-     è disponibile unicamente in contesto sicuro. Piper vi conserva i
-     modelli scaricati, quindi senza OPFS non ha dove metterli.
-   - Web Worker. Le librerie Piper eseguono l'inferenza ONNX in un
-     worker; da file:// la creazione di worker è soggetta a
-     restrizioni di origine.
-   - WebAssembly e import dinamico di moduli ESM da CDN.
+   2. PIPER (alternativa). Nella versione pubblicata presenta un
+      difetto accertato: richiede a onnxruntime-web 1.18.0 su cdnjs il
+      file "ort-wasm-simd-threaded.mjs", che a quella versione non
+      esiste (i file .mjs compaiono solo dalle versioni successive).
+      L'errore osservato — "no available backend found ... Failed to
+      fetch dynamically imported module" — deriva precisamente da qui.
+      Si tenta quindi di reindirizzare onnxruntime-web a una versione
+      che contenga davvero quei file, prima di caricare la libreria.
+      Rimedio non garantito: agisce su configurazione interna di
+      terze parti.
 
-   Su un file locale aperto con file:// almeno il primo requisito non
-   è soddisfatto. Non si tratta di un limite dell'implementazione ma
-   della piattaforma: la stessa applicazione servita via HTTPS
-   (GitHub Pages, o un server locale) soddisfa tutti i requisiti
-   senza modifiche al codice.
+   Entrambi restituiscono un Blob audio, che il controller riproduce
+   come qualsiasi altra sorgente.
    ========================================================= */
 
+const URL_MODULO_KOKORO = "https://esm.sh/kokoro-js@1.2.1";
 const URL_MODULO_PIPER = "https://esm.sh/@mintplex-labs/piper-tts-web@1.0.5";
+const MODELLO_KOKORO = "onnx-community/Kokoro-82M-v1.0-ONNX";
 
-/* Voci italiane pubblicate dal progetto Piper. La dimensione indicata
-   è quella del modello ONNX da scaricare al primo utilizzo; resta poi
-   memorizzato localmente e non viene più richiesto.
-   Confidenza sulla disponibilità dei singoli identificativi: media —
-   il catalogo dei modelli può cambiare, quindi l'elenco effettivo
-   viene richiesto alla libreria quando disponibile e questo serve da
-   ripiego. */
-const VOCI_PIPER_ITALIANE = [
-  { id: "it_IT-riccardo-x_low", nome: "Riccardo (molto leggera)", dimensione: "~20 MB" },
+/* Versione di onnxruntime-web che su cdnjs espone effettivamente i
+   file .mjs richiesti dal caricatore WebAssembly. */
+const BASE_ORT_VALIDA = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.19.2/dist/";
+
+const VOCI_KOKORO = [
+  { id: "if_sara", nome: "Sara (femminile, italiano)" },
+  { id: "im_nicola", nome: "Nicola (maschile, italiano)" },
+];
+
+const VOCI_PIPER = [
+  { id: "it_IT-riccardo-x_low", nome: "Riccardo (leggera)", dimensione: "~20 MB" },
   { id: "it_IT-paola-medium", nome: "Paola (media)", dimensione: "~63 MB" },
 ];
 
 const MotoreNeurale = (() => {
+  let istanzaKokoro = null;
   let moduloPiper = null;
-  let vociDisponibili = null;
-  let voceCaricata = null;
+  let caricamentoInCorso = null;
 
-  /* ---------- Diagnostica dei requisiti ---------- */
+  /* ---------- Conversione in Blob audio ----------
+
+     Transformers.js restituisce un oggetto RawAudio la cui interfaccia
+     è variata fra le versioni: si tentano in ordine i metodi noti e,
+     come ultima risorsa, si compone il file WAV a mano dai campioni
+     grezzi. In questo modo un cambiamento dell'API a monte non rende
+     l'applicazione inutilizzabile. */
+
+  function componiWav(campioni, frequenza) {
+    const lunghezza = campioni.length;
+    const buffer = new ArrayBuffer(44 + lunghezza * 2);
+    const vista = new DataView(buffer);
+
+    const scriviTesto = (posizione, testo) => {
+      for (let i = 0; i < testo.length; i++) vista.setUint8(posizione + i, testo.charCodeAt(i));
+    };
+
+    scriviTesto(0, "RIFF");
+    vista.setUint32(4, 36 + lunghezza * 2, true);
+    scriviTesto(8, "WAVE");
+    scriviTesto(12, "fmt ");
+    vista.setUint32(16, 16, true);          // dimensione del blocco fmt
+    vista.setUint16(20, 1, true);           // PCM non compresso
+    vista.setUint16(22, 1, true);           // monofonico
+    vista.setUint32(24, frequenza, true);
+    vista.setUint32(28, frequenza * 2, true);
+    vista.setUint16(32, 2, true);
+    vista.setUint16(34, 16, true);          // 16 bit per campione
+    scriviTesto(36, "data");
+    vista.setUint32(40, lunghezza * 2, true);
+
+    // I campioni arrivano in virgola mobile fra -1 e 1: si convertono
+    // in interi a 16 bit con saturazione, per evitare distorsioni.
+    let posizione = 44;
+    for (let i = 0; i < lunghezza; i++) {
+      const valore = Math.max(-1, Math.min(1, campioni[i]));
+      vista.setInt16(posizione, valore < 0 ? valore * 0x8000 : valore * 0x7fff, true);
+      posizione += 2;
+    }
+    return new Blob([buffer], { type: "audio/wav" });
+  }
+
+  async function inBlob(audio) {
+    if (!audio) throw new Error("Nessun audio restituito dal modello.");
+    if (audio instanceof Blob) return audio;
+    if (typeof audio.toBlob === "function") return await audio.toBlob();
+    if (typeof audio.toWav === "function") return new Blob([audio.toWav()], { type: "audio/wav" });
+    if (audio.audio && audio.sampling_rate) return componiWav(audio.audio, audio.sampling_rate);
+    throw new Error("Formato audio non riconosciuto.");
+  }
+
+  /* ---------- Diagnostica ---------- */
 
   async function verificaRequisiti() {
     const esiti = [];
@@ -2836,133 +2965,154 @@ const MotoreNeurale = (() => {
     esiti.push({
       nome: "Contesto sicuro (HTTPS)",
       esito: !!window.isSecureContext,
-      nota: window.isSecureContext
-        ? `Origine: ${location.origin || "non definita"}`
-        : "Richiesto per la memorizzazione dei modelli vocali.",
+      nota: window.isSecureContext ? `Origine: ${location.origin}` : "Necessario per i motori neurali.",
     });
 
-    // OPFS: è il requisito che decide. Si tenta la chiamata reale
-    // invece di dedurne l'esito, perché il comportamento varia fra
-    // browser e modalità di navigazione.
-    let opfsDisponibile = false;
-    let notaOpfs = "API non esposta dal browser.";
-    if (navigator.storage && typeof navigator.storage.getDirectory === "function") {
-      try {
-        await navigator.storage.getDirectory();
-        opfsDisponibile = true;
-        notaOpfs = "Memorizzazione dei modelli disponibile.";
-      } catch (errore) {
-        notaOpfs = `Accesso negato: ${errore.name || errore}.`;
-      }
-    }
-    esiti.push({ nome: "Archivio modelli (OPFS)", esito: opfsDisponibile, nota: notaOpfs });
+    esiti.push({
+      nome: "WebAssembly",
+      esito: typeof WebAssembly === "object",
+      nota: typeof WebAssembly === "object" ? "Supportato." : "Non supportato da questo browser.",
+    });
+
+    // Kokoro conserva il modello nella Cache API, non in OPFS: è
+    // disponibile in ogni contesto sicuro, incluso GitHub Pages.
+    esiti.push({
+      nome: "Archivio modelli (Cache API)",
+      esito: "caches" in window,
+      nota: "caches" in window ? "Il modello resta memorizzato dopo il primo scaricamento." : "Non disponibile: il modello andrebbe riscaricato ogni volta.",
+    });
 
     let workerDisponibile = false;
     let notaWorker = "";
     try {
       const sorgente = URL.createObjectURL(new Blob(["self.close();"], { type: "text/javascript" }));
-      const worker = new Worker(sorgente);
-      worker.terminate();
+      new Worker(sorgente).terminate();
       URL.revokeObjectURL(sorgente);
       workerDisponibile = true;
-      notaWorker = "Elaborazione in secondo piano disponibile.";
+      notaWorker = "Disponibile.";
     } catch (errore) {
-      notaWorker = `Creazione non riuscita: ${errore.name || errore}.`;
+      notaWorker = `Non disponibile (${errore.name || errore}). La sintesi funziona comunque, ma bloccherà brevemente l'interfaccia.`;
     }
-    esiti.push({ nome: "Web Worker", esito: workerDisponibile, nota: notaWorker });
+    // Non è un requisito bloccante: incide sulla fluidità, non sul funzionamento.
+    esiti.push({ nome: "Web Worker (facoltativo)", esito: workerDisponibile, nota: notaWorker, facoltativo: true });
 
-    esiti.push({
-      nome: "WebAssembly",
-      esito: typeof WebAssembly === "object",
-      nota: typeof WebAssembly === "object" ? "Supportato." : "Non supportato.",
-    });
-
-    let reteDisponibile = false;
-    let notaRete = "";
+    let rete = false;
     try {
       await fetch("https://esm.sh/", { method: "HEAD", mode: "no-cors" });
-      reteDisponibile = true;
-      notaRete = "Raggiungibile.";
-    } catch (errore) {
-      notaRete = "Non raggiungibile: serve connessione al primo scaricamento.";
-    }
-    esiti.push({ nome: "Accesso alla rete", esito: reteDisponibile, nota: notaRete });
+      rete = true;
+    } catch (e) { /* non raggiungibile */ }
+    esiti.push({
+      nome: "Accesso alla rete",
+      esito: rete,
+      nota: rete ? "Raggiungibile." : "Necessaria al primo scaricamento del modello.",
+    });
 
-    const utilizzabile = esiti.every((e) => e.esito);
+    const utilizzabile = esiti.every((e) => e.esito || e.facoltativo);
     return { esiti, utilizzabile };
   }
 
-  /* ---------- Caricamento della libreria ---------- */
+  /* ---------- Kokoro ---------- */
 
-  async function caricaModulo() {
+  async function caricaKokoro(alProgresso) {
+    if (istanzaKokoro) return istanzaKokoro;
+    if (caricamentoInCorso) return await caricamentoInCorso;
+
+    caricamentoInCorso = (async () => {
+      const modulo = await import(/* @vite-ignore */ URL_MODULO_KOKORO);
+      const Costruttore = modulo.KokoroTTS || (modulo.default && modulo.default.KokoroTTS);
+      if (!Costruttore) throw new Error("Il modulo Kokoro non espone l'interfaccia attesa.");
+
+      istanzaKokoro = await Costruttore.from_pretrained(MODELLO_KOKORO, {
+        // q8 riduce il modello da circa 326 MB a circa 86 MB senza
+        // differenze udibili apprezzabili: su un telefono è la scelta
+        // sensata, anche per i tempi di scaricamento.
+        dtype: "q8",
+        device: "wasm",
+        progress_callback: (evento) => {
+          if (!alProgresso || !evento) return;
+          if (evento.status === "progress" && evento.total) {
+            alProgresso(Math.round((evento.loaded / evento.total) * 100), evento.file || "");
+          } else if (evento.status === "done") {
+            alProgresso(100, evento.file || "");
+          }
+        },
+      });
+      return istanzaKokoro;
+    })();
+
+    try {
+      return await caricamentoInCorso;
+    } finally {
+      caricamentoInCorso = null;
+    }
+  }
+
+  async function sintetizzaKokoro(testo, idVoce) {
+    const tts = await caricaKokoro();
+    const audio = await tts.generate(testo, { voice: idVoce || "if_sara" });
+    return await inBlob(audio);
+  }
+
+  /* ---------- Piper ---------- */
+
+  async function caricaPiper() {
     if (moduloPiper) return moduloPiper;
-    // L'import dinamico è l'unico modo per caricare un modulo ESM da
-    // un file HTML autonomo senza passaggio di build.
+
+    // Tentativo di rimedio al difetto descritto in testa al file: si
+    // predispone una configurazione globale di onnxruntime-web che
+    // punti a file realmente esistenti, sperando che la libreria la
+    // rilevi invece di imporre la propria.
+    try {
+      if (!window.ort) window.ort = {};
+      window.ort.env = window.ort.env || {};
+      window.ort.env.wasm = window.ort.env.wasm || {};
+      window.ort.env.wasm.wasmPaths = BASE_ORT_VALIDA;
+      window.ort.env.wasm.numThreads = 1;
+    } catch (e) { /* configurazione non applicabile */ }
+
     moduloPiper = await import(/* @vite-ignore */ URL_MODULO_PIPER);
     return moduloPiper;
   }
 
-  async function elencaVoci() {
-    if (vociDisponibili) return vociDisponibili;
-    try {
-      const modulo = await caricaModulo();
-      if (typeof modulo.voices === "function") {
-        const tutte = await modulo.voices();
-        const italiane = tutte
-          .filter((v) => (v.language && (v.language.code || "").startsWith("it")) || (v.key || "").startsWith("it_IT"))
-          .map((v) => ({
-            id: v.key || v.id,
-            nome: `${v.name || v.key} (${v.quality || "?"})`,
-            dimensione: v.files ? "variabile" : "",
-          }));
-        vociDisponibili = italiane.length ? italiane : VOCI_PIPER_ITALIANE;
-      } else {
-        vociDisponibili = VOCI_PIPER_ITALIANE;
-      }
-    } catch (errore) {
-      vociDisponibili = VOCI_PIPER_ITALIANE;
+  async function sintetizzaPiper(testo, idVoce) {
+    const modulo = await caricaPiper();
+    const risultato = await modulo.predict({ text: testo, voiceId: idVoce });
+    return await inBlob(risultato);
+  }
+
+  /* ---------- Interfaccia comune ---------- */
+
+  async function scaricaModello(idMotore, idVoce, alProgresso) {
+    if (idMotore === "kokoro") {
+      await caricaKokoro(alProgresso);
+      return;
     }
-    return vociDisponibili;
-  }
-
-  async function elencaScaricate() {
-    try {
-      const modulo = await caricaModulo();
-      if (typeof modulo.stored === "function") return await modulo.stored();
-    } catch (errore) { /* nessun modello memorizzato o libreria assente */ }
-    return [];
-  }
-
-  async function scaricaVoce(idVoce, alProgresso) {
-    const modulo = await caricaModulo();
+    const modulo = await caricaPiper();
     if (typeof modulo.download !== "function") {
       throw new Error("La libreria non espone una funzione di scaricamento.");
     }
     await modulo.download(idVoce, (progresso) => {
       if (!alProgresso) return;
-      const percentuale = progresso && progresso.total
-        ? Math.round((progresso.loaded / progresso.total) * 100)
-        : null;
-      alProgresso(percentuale);
+      alProgresso(progresso && progresso.total ? Math.round((progresso.loaded / progresso.total) * 100) : null, "");
     });
-    voceCaricata = idVoce;
   }
 
-  async function sintetizza(testo, idVoce) {
-    const modulo = await caricaModulo();
-    // predict restituisce un Blob WAV: la riproduzione è a carico del
-    // controller, che lo tratta come una qualsiasi sorgente audio.
-    return await modulo.predict({ text: testo, voiceId: idVoce });
+  async function sintetizza(testo, idVoce, idMotore) {
+    if (idMotore === "kokoro") return await sintetizzaKokoro(testo, idVoce);
+    return await sintetizzaPiper(testo, idVoce);
+  }
+
+  function vociDi(idMotore) {
+    return idMotore === "kokoro" ? VOCI_KOKORO : VOCI_PIPER;
   }
 
   return {
     verificaRequisiti,
-    elencaVoci,
-    elencaScaricate,
-    scaricaVoce,
+    scaricaModello,
     sintetizza,
-    vociPredefinite: VOCI_PIPER_ITALIANE,
-    voceCaricata: () => voceCaricata,
+    vociDi,
+    vociKokoro: VOCI_KOKORO,
+    vociPiper: VOCI_PIPER,
   };
 })();
 
@@ -3014,18 +3164,23 @@ const REGISTRO_MOTORI = {
       return window.speechSynthesis ? window.speechSynthesis.getVoices() : [];
     },
   },
-  piper: {
-    id: "piper",
-    nome: "Piper (neurale, in locale)",
+  kokoro: {
+    id: "kokoro",
+    nome: "Kokoro (neurale, voci italiane)",
     tipo: "audio",
     ottieniVoci() {
-      // L'elenco effettivo si ottiene in modo asincrono; qui si
-      // restituisce il ripiego sincrono usato per popolare il menu
-      // prima che la libreria sia caricata.
-      return (typeof MotoreNeurale !== "undefined" ? MotoreNeurale.vociPredefinite : []).map((v) => ({
-        voiceURI: v.id,
-        name: `${v.nome} ${v.dimensione}`,
-        lang: "it-IT",
+      return (typeof MotoreNeurale !== "undefined" ? MotoreNeurale.vociKokoro : []).map((v) => ({
+        voiceURI: v.id, name: v.nome, lang: "it-IT",
+      }));
+    },
+  },
+  piper: {
+    id: "piper",
+    nome: "Piper (neurale, sperimentale)",
+    tipo: "audio",
+    ottieniVoci() {
+      return (typeof MotoreNeurale !== "undefined" ? MotoreNeurale.vociPiper : []).map((v) => ({
+        voiceURI: v.id, name: `${v.nome} ${v.dimensione}`, lang: "it-IT",
       }));
     },
   },
@@ -3041,6 +3196,7 @@ const ControllerTTS = (() => {
   let indiceAccodato = -1;   // ultima unità consegnata al motore
   let velocita = 1.0;
   let tono = 1.0;
+  let volume = 1.0;
   let voceSelezionataURI = null;
   let inRiproduzione = false;
   let preAccodamentoAttivo = true;
@@ -3101,6 +3257,17 @@ const ControllerTTS = (() => {
     if (elementoAudio) elementoAudio.playbackRate = velocita;
     registra("IMPOSTAZIONE", `velocità: ${velocita}`);
   }
+
+  function impostaVolume(nuovoVolume) {
+    volume = Math.min(1, Math.max(0, nuovoVolume));
+    // Sui motori audio il volume agisce sull'elemento in riproduzione,
+    // quindi ha effetto immediato; sulla Web Speech API si applica
+    // soltanto agli enunciati accodati successivamente.
+    if (elementoAudio) elementoAudio.volume = volume;
+    registra("IMPOSTAZIONE", `volume: ${Math.round(volume * 100)}%`);
+  }
+
+  function ottieniVolume() { return volume; }
 
   function impostaTono(nuovoTono) {
     tono = Math.min(2, Math.max(0.5, Math.round(nuovoTono * 10) / 10));
@@ -3184,21 +3351,46 @@ const ControllerTTS = (() => {
     return voci.find((v) => v.lang && v.lang.toLowerCase().startsWith("it")) || voci[0];
   }
 
-  function provaVoce(testoProva) {
-    if (!window.speechSynthesis) return;
+  /* La prova voce deve passare per il motore effettivamente attivo.
+     In precedenza usava sempre e solo la Web Speech API: con un motore
+     neurale selezionato non produceva alcun suono, senza però segnalare
+     alcun errore — da cui l'impressione che il motore fosse guasto.
+
+     Restituisce una Promise, così che l'interfaccia possa mostrare lo
+     stato di avanzamento: con un motore neurale la prima sintesi
+     richiede il caricamento del modello e può durare parecchio. */
+  async function provaVoce(testoProva) {
     if (inRiproduzione) pausa();
-    window.speechSynthesis.cancel();
-    setTimeout(() => {
-      const enunciato = new SpeechSynthesisUtterance(testoProva);
-      enunciato.rate = velocita;
-      enunciato.pitch = tono;
-      const voce = trovaVoce();
-      if (voce) {
-        enunciato.voice = voce;
-        enunciato.lang = voce.lang;
+
+    if (motoreCorrente.tipo === "audio") {
+      const blob = await MotoreNeurale.sintetizza(testoProva, voceSelezionataURI, motoreCorrente.id);
+      const audio = ottieniElementoAudio();
+      costruisciCatenaAudio();
+      if (contestoAudio && contestoAudio.state === "suspended") {
+        try { await contestoAudio.resume(); } catch (e) { /* non bloccante */ }
       }
-      window.speechSynthesis.speak(enunciato);
-    }, RITARDO_DOPO_INTERRUZIONE_MS);
+      const url = URL.createObjectURL(blob);
+      audio.src = url;
+      audio.playbackRate = velocita;
+      audio.volume = volume;
+      audio.onended = () => URL.revokeObjectURL(url);
+      await audio.play();
+      return;
+    }
+
+    if (!window.speechSynthesis) throw new Error("Sintesi di sistema non disponibile.");
+    window.speechSynthesis.cancel();
+    await new Promise((risolvi) => setTimeout(risolvi, RITARDO_DOPO_INTERRUZIONE_MS));
+    const enunciato = new SpeechSynthesisUtterance(testoProva);
+    enunciato.rate = velocita;
+    enunciato.pitch = tono;
+    enunciato.volume = volume;
+    const voce = trovaVoce();
+    if (voce) {
+      enunciato.voice = voce;
+      enunciato.lang = voce.lang;
+    }
+    window.speechSynthesis.speak(enunciato);
   }
 
   function accodaUnita(indice) {
@@ -3208,6 +3400,7 @@ const ControllerTTS = (() => {
     const enunciato = new SpeechSynthesisUtterance(testo);
     enunciato.rate = velocita;
     enunciato.pitch = tono;
+    enunciato.volume = volume;
     const voce = trovaVoce();
     if (voce) {
       enunciato.voice = voce;
@@ -3394,7 +3587,7 @@ const ControllerTTS = (() => {
   async function generaAudioUnita(indice) {
     const testo = frasi[indice];
     if (!testo) return null;
-    const blob = await MotoreNeurale.sintetizza(testo, voceSelezionataURI);
+    const blob = await MotoreNeurale.sintetizza(testo, voceSelezionataURI, motoreCorrente.id);
     return URL.createObjectURL(blob);
   }
 
@@ -3431,6 +3624,7 @@ const ControllerTTS = (() => {
       }
       audio.src = urlCorrente;
       audio.playbackRate = velocita;
+      audio.volume = volume;
 
       // Generazione anticipata della prossima unità, avviata subito
       // dopo l'inizio della riproduzione corrente.
@@ -3546,6 +3740,8 @@ const ControllerTTS = (() => {
 
   return {
     motoreAttivo,
+    impostaVolume,
+    ottieniVolume,
     impostaEqualizzatore,
     ottieniEqualizzatore,
     equalizzatoreDisponibile,
@@ -3591,8 +3787,8 @@ const ControllerTTS = (() => {
   const AMPIEZZA_FINESTRA = 60;
   const MARGINE_RICOSTRUZIONE = 15;
   const INTERVALLO_MINIMO_SALVATAGGIO_MS = 3000;
-  const VERSIONE_APP = "4.4";
-  const DATA_VERSIONE_APP = "11 settembre 2026";
+  const VERSIONE_APP = "5.0";
+  const DATA_VERSIONE_APP = "17 settembre 2026";
 
   const DIMENSIONI_CARATTERE = [0.88, 0.96, 1.04, 1.14, 1.26, 1.4, 1.56];
   const INDICE_DIMENSIONE_PREDEFINITO = 2;
@@ -4436,25 +4632,43 @@ const ControllerTTS = (() => {
     notte: { bassi: 2, medi: 0, alti: -7, compressione: true },
   };
 
+  /* L'equalizzatore compare in due punti — nel cassetto di lettura e
+     nelle impostazioni — perché serve sia durante l'ascolto sia in fase
+     di configurazione. I due gruppi di controlli non sono indipendenti:
+     riflettono lo stesso stato e vengono aggiornati insieme, altrimenti
+     mostrerebbero valori divergenti. */
+  const GRUPPI_EQUALIZZATORE = [
+    { suffisso: "", contenitoreBande: "bande-equalizzatore", contenitorePreset: "preset-equalizzatore", avviso: "avviso-equalizzatore" },
+    { suffisso: "-imp", contenitoreBande: "bande-equalizzatore-imp", contenitorePreset: "preset-equalizzatore-imp", avviso: "avviso-equalizzatore-imp" },
+  ];
+
+  const MOTIVO_EQUALIZZATORE_NON_DISPONIBILE =
+    "L'equalizzatore richiede un motore neurale. La sintesi di sistema invia il parlato direttamente all'uscita del dispositivo, senza esporre alcun punto in cui inserire un filtro: è una limitazione della piattaforma, non dell'applicazione.";
+
   function aggiornaInterfacciaEqualizzatore() {
     const valori = ControllerTTS.ottieniEqualizzatore();
-    el("eq-bassi").value = valori.bassi;
-    el("eq-medi").value = valori.medi;
-    el("eq-alti").value = valori.alti;
-    el("eq-compressione").checked = valori.compressione;
-    el("eq-bassi-etichetta").textContent = `${valori.bassi} dB`;
-    el("eq-medi-etichetta").textContent = `${valori.medi} dB`;
-    el("eq-alti-etichetta").textContent = `${valori.alti} dB`;
-
     const disponibile = ControllerTTS.equalizzatoreDisponibile();
-    el("avviso-equalizzatore").hidden = disponibile;
-    el("bande-equalizzatore").classList.toggle("disattivata", !disponibile);
-    el("preset-equalizzatore").classList.toggle("disattivata", !disponibile);
-    ["eq-bassi", "eq-medi", "eq-alti", "eq-compressione"].forEach((idElemento) => {
-      el(idElemento).disabled = !disponibile;
-    });
-    Array.from(document.querySelectorAll("#preset-equalizzatore button")).forEach((b) => {
-      b.disabled = !disponibile;
+
+    GRUPPI_EQUALIZZATORE.forEach((gruppo) => {
+      const s = gruppo.suffisso;
+      ["bassi", "medi", "alti"].forEach((banda) => {
+        const campo = el(`eq-${banda}${s}`);
+        campo.value = valori[banda];
+        campo.disabled = !disponibile;
+        el(`eq-${banda}${s}-etichetta`).textContent = `${valori[banda]} dB`;
+      });
+      const compressione = el(`eq-compressione${s}`);
+      compressione.checked = valori.compressione;
+      compressione.disabled = !disponibile;
+
+      const avviso = el(gruppo.avviso);
+      avviso.hidden = disponibile;
+      if (!disponibile) avviso.textContent = MOTIVO_EQUALIZZATORE_NON_DISPONIBILE;
+      el(gruppo.contenitoreBande).classList.toggle("disattivata", !disponibile);
+      el(gruppo.contenitorePreset).classList.toggle("disattivata", !disponibile);
+      Array.from(document.querySelectorAll(`#${gruppo.contenitorePreset} button`)).forEach((b) => {
+        b.disabled = !disponibile;
+      });
     });
   }
 
@@ -4462,6 +4676,57 @@ const ControllerTTS = (() => {
     ControllerTTS.impostaEqualizzatore(valori);
     await LibreriaDB.impostaImpostazione("equalizzatore", ControllerTTS.ottieniEqualizzatore());
     aggiornaInterfacciaEqualizzatore();
+  }
+
+  /* Frasi di prova.
+
+     Scelte fra testi di pubblico dominio e frasi originali, e non fra
+     citazioni di opere recenti, che sarebbero protette dal diritto
+     d'autore. Sono selezionate per mettere alla prova aspetti diversi
+     della pronuncia italiana: consonanti doppie, accenti, elisioni,
+     numeri e punteggiatura, dove i sintetizzatori sbagliano più spesso. */
+  const FRASI_DI_PROVA = [
+    {
+      nome: "Manzoni — incipit dei Promessi Sposi",
+      testo: "Quel ramo del lago di Como, che volge a mezzogiorno, tra due catene non interrotte di monti, tutto a seni e a golfi, a seconda dello sporgere e del rientrare di quelli.",
+    },
+    {
+      nome: "Collodi — incipit di Pinocchio",
+      testo: "C'era una volta un pezzo di legno. Non era un legno di lusso, ma un semplice pezzo da catasta, di quelli che d'inverno si mettono nelle stufe per accendere il fuoco.",
+    },
+    {
+      nome: "Prova di pronuncia (consonanti doppie)",
+      testo: "Il ghiaccio che scricchiola sotto le scarpe accompagnava la passeggiata: soqquadro, acquazzone, gnocchi, sciogliere, aglio e famiglia.",
+    },
+    {
+      nome: "Prova di numeri e date",
+      testo: "Il 21 marzo 1848, alle ore 14:30, furono contate 1.250 persone: il 37 per cento proveniva dalle province vicine.",
+    },
+    {
+      nome: "Prova di lettura continua",
+      testo: "Questa frase serve a valutare il ritmo su un periodo più lungo, con virgole, incisi e una pausa finale, così da capire se la voce risulta piacevole anche dopo diversi minuti di ascolto.",
+    },
+  ];
+
+  function popolaFrasiDiProva() {
+    const selettore = el("selettore-frase-prova");
+    selettore.innerHTML = "";
+    FRASI_DI_PROVA.forEach((frase, indice) => {
+      const opzione = document.createElement("option");
+      opzione.value = String(indice);
+      opzione.textContent = frase.nome;
+      selettore.appendChild(opzione);
+    });
+  }
+
+  const DESCRIZIONI_MOTORE = {
+    webspeech: "Voci del sistema operativo. Immediate e senza scaricamenti, ma il timbro dipende dal dispositivo e non è equalizzabile.",
+    kokoro: "Modello neurale da 82 milioni di parametri con voci italiane dedicate. Circa 86 MB da scaricare una sola volta; qualità nettamente superiore e compatibile con l'equalizzatore.",
+    piper: "Motore neurale leggero. Sperimentale: la versione pubblicata della libreria presenta un difetto noto di caricamento, quindi potrebbe non funzionare.",
+  };
+
+  function aggiornaDescrizioneMotore(idMotore) {
+    el("descrizione-motore").textContent = DESCRIZIONI_MOTORE[idMotore] || "";
   }
 
   function aggiornaStatisticheLibro() {
@@ -4626,40 +4891,38 @@ const ControllerTTS = (() => {
     el("bottone-scarica-voce").disabled = !utilizzabile;
   }
 
-  async function popolaVociPiper() {
-    const selettore = el("selettore-voce-piper");
-    selettore.innerHTML = "<option>Caricamento…</option>";
-    const voci = await MotoreNeurale.elencaVoci();
-    const scaricate = await MotoreNeurale.elencaScaricate();
+  function popolaVociNeurali(idMotore) {
+    const selettore = el("selettore-voce");
     selettore.innerHTML = "";
-    voci.forEach((voce) => {
+    MotoreNeurale.vociDi(idMotore).forEach((voce) => {
       const opzione = document.createElement("option");
       opzione.value = voce.id;
-      const giaPresente = scaricate.includes(voce.id);
-      opzione.textContent = `${voce.nome}${voce.dimensione ? " " + voce.dimensione : ""}${giaPresente ? " — già scaricata" : ""}`;
+      opzione.textContent = voce.nome + (voce.dimensione ? ` ${voce.dimensione}` : "");
       selettore.appendChild(opzione);
     });
     if (selettore.value) ControllerTTS.impostaVoce(selettore.value);
   }
 
-  async function scaricaVocePiper() {
-    const idVoce = el("selettore-voce-piper").value;
-    if (!idVoce) return;
+  async function scaricaVoceNeurale() {
+    const idMotore = el("selettore-motore").value;
+    const idVoce = el("selettore-voce").value;
     const stato = el("stato-scaricamento-piper");
     const bottone = el("bottone-scarica-voce");
     bottone.disabled = true;
-    stato.textContent = "Avvio dello scaricamento…";
+    stato.textContent = idMotore === "kokoro"
+      ? "Scaricamento del modello (circa 86 MB al primo utilizzo)…"
+      : "Avvio dello scaricamento…";
     try {
-      await MotoreNeurale.scaricaVoce(idVoce, (percentuale) => {
+      await MotoreNeurale.scaricaModello(idMotore, idVoce, (percentuale, file) => {
+        const nome = file ? ` (${String(file).split("/").pop()})` : "";
         stato.textContent = percentuale === null
-          ? "Scaricamento in corso…"
-          : `Scaricamento: ${percentuale}%`;
+          ? `Scaricamento in corso…${nome}`
+          : `Scaricamento: ${percentuale}%${nome}`;
       });
       ControllerTTS.impostaVoce(idVoce);
-      stato.textContent = "Voce pronta. Resta memorizzata per gli utilizzi successivi.";
-      await popolaVociPiper();
+      stato.textContent = "Modello pronto. Resta memorizzato per gli utilizzi successivi.";
     } catch (errore) {
-      stato.textContent = `Scaricamento non riuscito: ${errore.message || errore}`;
+      stato.textContent = `Non riuscito: ${errore.message || errore}`;
     } finally {
       bottone.disabled = false;
     }
@@ -4703,11 +4966,12 @@ const ControllerTTS = (() => {
       ControllerTTS.interrompi();
       ControllerTTS.impostaMotore(idMotore);
       await LibreriaDB.impostaImpostazione("motore", idMotore);
-      const neurale = idMotore === "piper";
+      const neurale = idMotore === "kokoro" || idMotore === "piper";
       el("sezione-piper").hidden = !neurale;
       el("riga-tono").hidden = neurale; // il tono è proprietà del modello
+      aggiornaDescrizioneMotore(idMotore);
       if (neurale) {
-        await popolaVociPiper();
+        await popolaVociNeurali(idMotore);
         await eseguiDiagnosticaMotori();
       } else {
         aggiornaListaVoci();
@@ -4716,10 +4980,28 @@ const ControllerTTS = (() => {
     });
 
     el("selettore-voce").addEventListener("change", (e) => ControllerTTS.impostaVoce(e.target.value));
-    el("bottone-scarica-voce").addEventListener("click", scaricaVocePiper);
+    el("bottone-scarica-voce").addEventListener("click", scaricaVoceNeurale);
     el("bottone-riverifica-piper").addEventListener("click", eseguiDiagnosticaMotori);
-    el("bottone-prova-voce").addEventListener("click", () => {
-      ControllerTTS.provaVoce("Questa è una voce di prova, per verificare velocità e tono prima di iniziare l'ascolto.");
+    el("bottone-prova-voce").addEventListener("click", async () => {
+      const bottone = el("bottone-prova-voce");
+      const stato = el("stato-prova-voce");
+      const frase = FRASI_DI_PROVA[parseInt(el("selettore-frase-prova").value, 10)];
+      if (!frase) return;
+      bottone.disabled = true;
+      // Con un motore neurale la prima sintesi comporta il caricamento
+      // del modello: senza questo avviso il silenzio iniziale sembra un
+      // guasto, che è esattamente l'equivoco emerso con Piper.
+      stato.textContent = ControllerTTS.motoreAttivo().tipo === "audio"
+        ? "Sintesi in corso… al primo utilizzo occorre attendere il caricamento del modello."
+        : "Riproduzione in corso…";
+      try {
+        await ControllerTTS.provaVoce(frase.testo);
+        stato.textContent = "";
+      } catch (errore) {
+        stato.textContent = `Prova non riuscita: ${errore.message || errore}`;
+      } finally {
+        bottone.disabled = false;
+      }
     });
   }
 
@@ -4886,19 +5168,28 @@ const ControllerTTS = (() => {
       LibreriaDB.impostaImpostazione("preAccodamento", e.target.checked);
     });
 
-    [["eq-bassi", "bassi"], ["eq-medi", "medi"], ["eq-alti", "alti"]].forEach(([idElemento, banda]) => {
-      el(idElemento).addEventListener("input", () => {
-        const valore = parseInt(el(idElemento).value, 10);
-        el(`${idElemento}-etichetta`).textContent = `${valore} dB`;
-        salvaEqualizzatore({ [banda]: valore });
+    GRUPPI_EQUALIZZATORE.forEach((gruppo) => {
+      const suffisso = gruppo.suffisso;
+      ["bassi", "medi", "alti"].forEach((banda) => {
+        el(`eq-${banda}${suffisso}`).addEventListener("input", (e) =>
+          salvaEqualizzatore({ [banda]: parseInt(e.target.value, 10) })
+        );
       });
+      el(`eq-compressione${suffisso}`).addEventListener("change", (e) =>
+        salvaEqualizzatore({ compressione: e.target.checked })
+      );
+      Array.from(document.querySelectorAll(`#${gruppo.contenitorePreset} button`)).forEach((b) =>
+        b.addEventListener("click", () => salvaEqualizzatore(PRESET_EQUALIZZATORE[b.dataset.preset]))
+      );
     });
-    el("eq-compressione").addEventListener("change", (e) =>
-      salvaEqualizzatore({ compressione: e.target.checked })
-    );
-    Array.from(document.querySelectorAll("#preset-equalizzatore button")).forEach((b) =>
-      b.addEventListener("click", () => salvaEqualizzatore(PRESET_EQUALIZZATORE[b.dataset.preset]))
-    );
+
+    const sliderVolume = el("slider-volume");
+    sliderVolume.addEventListener("input", () => {
+      const percentuale = parseInt(sliderVolume.value, 10);
+      el("volume-etichetta").textContent = `${percentuale}%`;
+      ControllerTTS.impostaVolume(percentuale / 100);
+      LibreriaDB.impostaImpostazione("volume", percentuale);
+    });
 
     collegaCassetto("bottone-opzioni-voce", "sfondo-cassetto-voce", "cassetto-voce", aggiornaInterfacciaEqualizzatore);
     collegaCassetto("bottone-capitoli", "sfondo-cassetto-capitoli", "cassetto-capitoli", renderElencoCapitoli);
@@ -5020,12 +5311,20 @@ const ControllerTTS = (() => {
     const motoreSalvato = await LibreriaDB.ottieniImpostazione("motore", "webspeech");
     ControllerTTS.impostaMotore(motoreSalvato);
     el("selettore-motore").value = motoreSalvato;
-    if (motoreSalvato === "piper") {
+    if (motoreSalvato === "kokoro" || motoreSalvato === "piper") {
       el("sezione-piper").hidden = false;
       el("riga-tono").hidden = true;
-      popolaVociPiper();
+      popolaVociNeurali(motoreSalvato);
       eseguiDiagnosticaMotori();
     }
+    aggiornaDescrizioneMotore(motoreSalvato);
+
+    popolaFrasiDiProva();
+
+    const volumeSalvato = await LibreriaDB.ottieniImpostazione("volume", 100);
+    el("slider-volume").value = volumeSalvato;
+    el("volume-etichetta").textContent = `${volumeSalvato}%`;
+    ControllerTTS.impostaVolume(volumeSalvato / 100);
 
     const eqSalvato = await LibreriaDB.ottieniImpostazione("equalizzatore", null);
     if (eqSalvato) ControllerTTS.impostaEqualizzatore(eqSalvato);
@@ -5059,7 +5358,14 @@ const ControllerTTS = (() => {
     collegaEventi();
     await renderLibreria();
 
-    el("versione-app").textContent = `Versione ${VERSIONE_APP} — ${DATA_VERSIONE_APP}`;
+    // Informazioni di versione: utili quando si segnala un problema, per
+    // sapere con certezza quale revisione è effettivamente in esecuzione
+    // (la cache del browser può servirne una diversa da quella pubblicata).
+    const motoreDescritto = ControllerTTS.motoreAttivo();
+    el("versione-app").innerHTML =
+      `<strong>CLaudio ${VERSIONE_APP}</strong>Audio Converter Library · ${DATA_VERSIONE_APP}<br>` +
+      `Motore attivo: ${escapeHtml(motoreDescritto.nome)}<br>` +
+      `Contesto: ${window.isSecureContext ? "sicuro" : "non sicuro"} · ${escapeHtml(location.origin || "file locale")}`;
 
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.register("service-worker.js").catch((e) => {
