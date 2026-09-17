@@ -1,0 +1,18 @@
+{
+  "name": "CLaudio — Audio Converter Library",
+  "short_name": "CLaudio",
+  "description": "Lettore di PDF, EPUB, MOBI, AZW3 e TXT con sintesi vocale, equalizzatore, segnalibri e libreria locale.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#ECE6D6",
+  "theme_color": "#1F4B4A",
+  "lang": "it",
+  "categories": ["books", "productivity", "education"],
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

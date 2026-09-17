@@ -1,0 +1,5066 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1F4B4A">
+<title>CLaudio — Audio Converter Library</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="CLaudio">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="description" content="Lettore di PDF, EPUB, MOBI, AZW3 e TXT con sintesi vocale, equalizzatore e libreria locale.">
+<style>
+/* =========================================================
+   Lettore Ebook — fogli di stile
+   Tema "manoscritto": carta calda / inchiostro, non il classico
+   crema+terracotta da template. Tipografia serif per il testo
+   di lettura, sans di sistema per i controlli.
+   ========================================================= */
+
+:root,
+[data-theme="chiaro"], [data-theme="giorno"] {
+  --bg: #ECE6D6;
+  --bg-elevata: #DCD3B8;
+  --pannello: #F4F0E4;
+  --bordo: rgba(43, 38, 32, 0.18);
+  --testo: #2B2620;
+  --testo-attenuato: #5B5348;
+  --accento: #1F4B4A;
+  --accento-testo: #F4F0E4;
+  --accento-secondario: #8A4B32;
+  --evidenziazione: #D8C88A;
+  --pericolo: #8A3324;
+  --ombra: rgba(43, 38, 32, 0.12);
+}
+
+[data-theme="scuro"], [data-theme="notte"] {
+  --bg: #171512;
+  --bg-elevata: #201D18;
+  --pannello: #242019;
+  --bordo: rgba(232, 225, 208, 0.16);
+  --testo: #E8E1D0;
+  --testo-attenuato: #A79E8C;
+  --accento: #5FA6A2;
+  --accento-testo: #12201F;
+  --accento-secondario: #D08A5F;
+  --evidenziazione: #4A4326;
+  --pericolo: #D97757;
+  --ombra: rgba(0, 0, 0, 0.4);
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--testo);
+}
+
+body {
+  font-family: -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior-y: contain;
+}
+
+button, input, select {
+  font-family: inherit;
+  color: inherit;
+}
+
+/* Focus visibile per navigazione da tastiera */
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--accento);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
+}
+
+/* ---------- Struttura app ---------- */
+
+#app {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  max-width: 720px;
+  margin: 0 auto;
+  position: relative;
+}
+
+.vista {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 16px calc(16px + env(safe-area-inset-bottom));
+}
+
+.vista[hidden] { display: none; }
+
+/* Barra superiore */
+.barra-superiore {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 12px calc(10px + env(safe-area-inset-top)) 12px;
+  padding-top: max(12px, env(safe-area-inset-top));
+  background: var(--pannello);
+  border-bottom: 1px solid var(--bordo);
+  flex-shrink: 0;
+}
+
+.barra-superiore .blocco-logo {
+  flex: 1;
+  min-width: 0;
+}
+
+.barra-superiore .logo-app {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.icona-bottone {
+  background: transparent;
+  border: 1px solid var(--bordo);
+  border-radius: 6px;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--testo);
+}
+
+.icona-bottone:active { background: var(--bg-elevata); }
+
+.icona-bottone svg { width: 20px; height: 20px; stroke: currentColor; fill: none; }
+
+/* ---------- Libreria ---------- */
+
+.libreria-intestazione {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.libreria-intestazione h2 {
+  font-size: 1.3rem;
+  margin: 0;
+  font-weight: 600;
+}
+
+.bottone-importa {
+  background: var(--accento);
+  color: var(--accento-testo);
+  border: none;
+  border-radius: 6px;
+  padding: 10px 16px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.bottone-importa:active { opacity: 0.85; }
+
+.griglia-libri {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+
+.scheda-libro {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--pannello);
+  border: 1px solid var(--bordo);
+  border-radius: 8px;
+  padding: 12px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.scheda-libro .copertina {
+  width: 44px;
+  height: 58px;
+  flex-shrink: 0;
+  border-radius: 3px;
+  background: var(--accento);
+  color: var(--accento-testo);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.scheda-libro .dettagli { flex: 1; min-width: 0; }
+
+.scheda-libro .titolo {
+  font-weight: 600;
+  font-size: 0.95rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.scheda-libro .sottotitolo {
+  font-size: 0.8rem;
+  color: var(--testo-attenuato);
+  margin-top: 2px;
+}
+
+.scheda-libro .barra-progresso {
+  height: 3px;
+  background: var(--bordo);
+  border-radius: 2px;
+  margin-top: 8px;
+  overflow: hidden;
+}
+
+.scheda-libro .barra-progresso > span {
+  display: block;
+  height: 100%;
+  background: var(--accento);
+}
+
+.scheda-libro .elimina,
+.voce-elenco .elimina {
+  background: transparent;
+  border: none;
+  color: var(--testo-attenuato);
+  padding: 6px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.libreria-vuota {
+  text-align: center;
+  color: var(--testo-attenuato);
+  padding: 60px 20px;
+  font-size: 0.92rem;
+  line-height: 1.6;
+}
+
+/* ---------- Lettura ---------- */
+
+.pannello-testo {
+  background: var(--pannello);
+  border: 1px solid var(--bordo);
+  border-radius: 8px;
+  padding: 20px;
+  font-family: Georgia, "Iowan Old Style", "Palatino Linotype", "URW Palladio L", P052, serif;
+  font-size: 1.08rem;
+  line-height: 1.75;
+  max-width: 76ch;
+  margin: 0 auto 14px auto;
+}
+
+.pannello-testo .frase {
+  transition: background-color 0.15s ease;
+  border-radius: 3px;
+}
+
+.pannello-testo .frase.attiva {
+  background: var(--evidenziazione);
+}
+
+.info-capitolo-corrente {
+  text-align: center;
+  font-size: 0.78rem;
+  color: var(--testo-attenuato);
+  margin-bottom: 8px;
+  text-transform: none;
+}
+
+.riga-capitolo-nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.riga-capitolo-nav .info-capitolo-corrente {
+  flex: 1;
+  margin-bottom: 0;
+}
+
+.riga-capitolo-nav .icona-bottone {
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+}
+
+.riga-capitolo-nav .icona-bottone svg { width: 16px; height: 16px; }
+
+/* Barra di scorrimento posizione */
+.scrubber {
+  width: 100%;
+  margin: 6px 0 4px 0;
+  accent-color: var(--accento);
+}
+
+.etichette-scrubber {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.72rem;
+  color: var(--testo-attenuato);
+  margin-bottom: 10px;
+}
+
+/* ---------- Dock di controllo TTS ---------- */
+
+.dock-controlli {
+  flex-shrink: 0;
+  background: var(--pannello);
+  border-top: 1px solid var(--bordo);
+  padding: 10px 16px calc(10px + env(safe-area-inset-bottom)) 16px;
+}
+
+.riga-trasporto {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  margin-bottom: 8px;
+}
+
+.bottone-trasporto {
+  background: transparent;
+  border: none;
+  color: var(--testo);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px;
+}
+
+.bottone-trasporto svg { width: 26px; height: 26px; stroke: currentColor; fill: none; }
+
+.bottone-play {
+  /* Sfondo esplicito e sempre distinto dal fondo pannello: risolve
+     il difetto della vecchia app dove in modalita' notte il tasto
+     play (nero) spariva su sfondo nero. */
+  width: 62px;
+  height: 62px;
+  border-radius: 50%;
+  background: var(--accento);
+  color: var(--accento-testo);
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 8px var(--ombra);
+}
+
+.bottone-play svg { width: 26px; height: 26px; stroke: none; fill: currentColor; }
+
+.riga-velocita {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+
+.bottone-incremento {
+  width: 34px;
+  height: 34px;
+  border-radius: 6px;
+  border: 1px solid var(--bordo);
+  background: var(--bg-elevata);
+  color: var(--testo);
+  font-size: 1.1rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.riga-velocita input[type="range"] {
+  flex: 1;
+  accent-color: var(--accento);
+}
+
+.etichetta-velocita {
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+  min-width: 3.4em;
+  text-align: center;
+}
+
+.bottoniera-secondaria {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.bottoniera-secondaria .icona-bottone { width: 38px; height: 38px; }
+.bottoniera-secondaria .icona-bottone svg { width: 18px; height: 18px; }
+
+/* ---------- Cassetti (capitoli / segnalibri / impostazioni) ---------- */
+
+.sfondo-cassetto {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.4);
+  z-index: 20;
+}
+
+.sfondo-cassetto[hidden] { display: none; }
+
+.cassetto {
+  position: fixed;
+  left: 0; right: 0; bottom: 0;
+  max-width: 720px;
+  margin: 0 auto;
+  background: var(--pannello);
+  border-top: 1px solid var(--bordo);
+  border-radius: 14px 14px 0 0;
+  max-height: 78vh;
+  overflow-y: auto;
+  padding: 8px 18px calc(18px + env(safe-area-inset-bottom)) 18px;
+  z-index: 21;
+}
+
+.maniglia-cassetto {
+  width: 40px;
+  height: 4px;
+  background: var(--bordo);
+  border-radius: 2px;
+  margin: 8px auto 14px auto;
+}
+
+.cassetto h3 {
+  font-size: 1.05rem;
+  margin: 4px 0 12px 0;
+}
+
+.voce-elenco {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 11px 0;
+  border-bottom: 1px solid var(--bordo);
+  cursor: pointer;
+}
+
+.voce-elenco:last-child { border-bottom: none; }
+
+.voce-elenco .testo-voce { flex: 1; min-width: 0; }
+.voce-elenco .titolo-voce { font-size: 0.92rem; }
+.voce-elenco .sottotitolo-voce {
+  font-size: 0.78rem;
+  color: var(--testo-attenuato);
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.badge-tipo {
+  font-size: 0.68rem;
+  padding: 2px 7px;
+  border-radius: 10px;
+  background: var(--bg-elevata);
+  color: var(--testo-attenuato);
+  flex-shrink: 0;
+}
+
+.badge-tipo.nota { background: var(--accento-secondario); color: var(--accento-testo); }
+
+.elenco-vuoto {
+  color: var(--testo-attenuato);
+  font-size: 0.88rem;
+  padding: 20px 0;
+  text-align: center;
+}
+
+/* Impostazioni: righe con etichetta + controllo */
+.riga-impostazione {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--bordo);
+}
+
+.riga-impostazione:last-child { border-bottom: none; }
+
+.riga-impostazione label {
+  display: block;
+  font-size: 0.85rem;
+  color: var(--testo-attenuato);
+  margin-bottom: 6px;
+}
+
+.riga-impostazione select,
+.riga-impostazione input[type="range"] {
+  width: 100%;
+}
+
+.riga-impostazione select {
+  padding: 9px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--bordo);
+  background: var(--bg-elevata);
+}
+
+.nota-impostazione {
+  font-size: 0.76rem;
+  line-height: 1.45;
+  color: var(--testo-attenuato);
+  margin: 6px 0 0 0;
+}
+
+.statistiche-libro {
+  font-size: 0.78rem;
+  color: var(--testo-attenuato);
+  text-align: center;
+  padding: 6px 0 10px 0;
+  line-height: 1.5;
+}
+
+.commutatore-tema {
+  display: flex;
+  gap: 8px;
+}
+
+.commutatore-tema button {
+  flex: 1;
+  padding: 9px 0;
+  border-radius: 6px;
+  border: 1px solid var(--bordo);
+  background: var(--bg-elevata);
+  color: var(--testo);
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.commutatore-tema button.attivo {
+  background: var(--accento);
+  color: var(--accento-testo);
+  border-color: var(--accento);
+}
+
+.gruppo-bottoni-cassetto {
+  display: flex;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.bottone-secondario {
+  flex: 1;
+  padding: 10px;
+  border-radius: 6px;
+  border: 1px solid var(--bordo);
+  background: var(--bg-elevata);
+  color: var(--testo);
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.bottone-pericolo { color: var(--pericolo); border-color: var(--pericolo); background: transparent; }
+
+/* ---------- Overlay di caricamento import ---------- */
+
+.overlay-caricamento {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 30;
+  color: #F4F0E4;
+  font-size: 0.9rem;
+  text-align: center;
+  padding: 20px;
+}
+
+.overlay-caricamento[hidden] { display: none; }
+
+/* ---------- Toast di notifica (es. errori del motore vocale) ---------- */
+
+.toast {
+  position: fixed;
+  left: 16px;
+  right: 16px;
+  bottom: calc(16px + env(safe-area-inset-bottom));
+  max-width: 688px;
+  margin: 0 auto;
+  background: var(--pericolo);
+  color: #fff;
+  padding: 12px 16px;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  line-height: 1.4;
+  box-shadow: 0 4px 14px var(--ombra);
+  z-index: 40;
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+
+.toast[hidden] { display: none; }
+.toast.visibile { opacity: 1; transform: translateY(0); }
+
+.versione-app {
+  text-align: center;
+  font-size: 0.72rem;
+  color: var(--testo-attenuato);
+  margin-top: 16px;
+}
+
+/* ---------- Navigazione inferiore ---------- */
+
+.nav-inferiore {
+  display: flex;
+  border-top: 1px solid var(--bordo);
+  background: var(--pannello);
+  flex-shrink: 0;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.nav-inferiore button {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: var(--testo-attenuato);
+  padding: 10px 0 8px 0;
+  font-size: 0.72rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  cursor: pointer;
+}
+
+.nav-inferiore button svg { width: 20px; height: 20px; stroke: currentColor; fill: none; }
+
+.nav-inferiore button.attivo { color: var(--accento); }
+
+/* ---------- Temi aggiuntivi ---------- */
+
+[data-theme="seppia"] {
+  --bg: #E8DCC4; --bg-elevata: #DCCFB2; --pannello: #F2E9D5;
+  --bordo: rgba(74, 59, 42, 0.2); --testo: #4A3B2A; --testo-attenuato: #7A6A55;
+  --accento: #7A5230; --accento-testo: #F2E9D5; --accento-secondario: #9A6B3F;
+  --evidenziazione: #D4BC8A; --pericolo: #8A3324; --ombra: rgba(74, 59, 42, 0.14);
+}
+
+[data-theme="grigio"] {
+  --bg: #2E2E30; --bg-elevata: #3A3A3D; --pannello: #363638;
+  --bordo: rgba(225, 225, 228, 0.16); --testo: #D8D8DC; --testo-attenuato: #9A9AA0;
+  --accento: #6E8F8E; --accento-testo: #1E1E20; --accento-secondario: #A8836B;
+  --evidenziazione: #4E5E5E; --pericolo: #C4705E; --ombra: rgba(0, 0, 0, 0.4);
+}
+
+/* Nero assoluto: sui pannelli OLED i pixel a #000 restano spenti,
+   riducendo consumo e alone luminoso al buio. */
+[data-theme="amoled-ambra"] {
+  --bg: #000000; --bg-elevata: #0A0906; --pannello: #000000;
+  --bordo: rgba(214, 168, 90, 0.22); --testo: #D6A85A; --testo-attenuato: #8F7038;
+  --accento: #B8873C; --accento-testo: #000000; --accento-secondario: #966B2E;
+  --evidenziazione: #3A2C12; --pericolo: #B5563C; --ombra: rgba(0, 0, 0, 0.8);
+}
+
+/* Variante notturna: la luce rossa interferisce meno con l'adattamento
+   dell'occhio all'oscurità rispetto alle lunghezze d'onda corte. */
+[data-theme="amoled-rosso"] {
+  --bg: #000000; --bg-elevata: #0A0404; --pannello: #000000;
+  --bordo: rgba(200, 60, 50, 0.24); --testo: #C83C32; --testo-attenuato: #8A2A24;
+  --accento: #A8302A; --accento-testo: #000000; --accento-secondario: #8A2A24;
+  --evidenziazione: #3A0E0C; --pericolo: #E05A4A; --ombra: rgba(0, 0, 0, 0.8);
+}
+
+/* ---------- Riformattazione del testo ---------- */
+
+.blocco-paragrafo {
+  margin: 0 0 1.05em 0;
+  text-align: justify;
+  hyphens: auto;
+}
+
+.blocco-titolo {
+  margin: 1.7em 0 0.7em 0;
+  font-size: 1.12em;
+  font-weight: 700;
+  line-height: 1.35;
+  text-align: left;
+  color: var(--testo);
+  letter-spacing: 0.01em;
+}
+
+.blocco-titolo:first-child { margin-top: 0.2em; }
+
+/* ---------- Multi-selezione di paragrafi ---------- */
+
+.barra-selezione {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  background: var(--bg-elevata);
+  border-bottom: 1px solid var(--bordo);
+  font-size: 0.84rem;
+}
+
+.barra-selezione button {
+  margin-left: auto;
+  padding: 7px 14px;
+  border-radius: 6px;
+  border: none;
+  background: var(--accento);
+  color: var(--accento-testo);
+  font-size: 0.84rem;
+}
+
+.barra-selezione button:disabled { opacity: 0.45; }
+
+.interruttore-ripeti { display: flex; align-items: center; gap: 5px; }
+
+.modalita-selezione .blocco-paragrafo,
+.modalita-selezione .blocco-titolo {
+  cursor: pointer;
+  border-radius: 6px;
+  padding: 5px 8px;
+  margin-left: -8px;
+  margin-right: -8px;
+  transition: background 0.12s;
+}
+
+.modalita-selezione .blocco-paragrafo.selezionato,
+.modalita-selezione .blocco-titolo.selezionato {
+  background: var(--evidenziazione);
+  box-shadow: inset 3px 0 0 var(--accento);
+}
+
+/* ---------- Indicatore di pagina ---------- */
+
+.indicatore-pagina { display: inline-flex; align-items: center; gap: 4px; }
+
+.indicatore-pagina input {
+  width: 3.6em;
+  padding: 2px 4px;
+  text-align: center;
+  font-size: 0.78rem;
+  border-radius: 5px;
+  border: 1px solid var(--bordo);
+  background: var(--bg-elevata);
+  color: var(--testo);
+}
+
+.indicatore-pagina input::-webkit-outer-spin-button,
+.indicatore-pagina input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+
+/* ---------- Griglia dei temi ---------- */
+
+.griglia-temi {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.griglia-temi button {
+  padding: 10px 8px;
+  border-radius: 7px;
+  border: 1px solid var(--bordo);
+  background: var(--bg-elevata);
+  color: var(--testo);
+  font-size: 0.82rem;
+}
+
+.griglia-temi button.attivo {
+  background: var(--accento);
+  color: var(--accento-testo);
+  border-color: var(--accento);
+}
+
+/* ---------- Testo incollato e metadati ---------- */
+
+.azioni-libreria { display: flex; gap: 8px; }
+
+.bottone-importa.secondario {
+  background: var(--bg-elevata);
+  color: var(--testo);
+  border: 1px solid var(--bordo);
+}
+
+.cassetto textarea,
+.cassetto input[type="text"] {
+  width: 100%;
+  padding: 10px;
+  border-radius: 7px;
+  border: 1px solid var(--bordo);
+  background: var(--bg-elevata);
+  color: var(--testo);
+  font-family: inherit;
+  font-size: 0.9rem;
+  resize: vertical;
+}
+
+.bottone-principale {
+  width: 100%;
+  padding: 12px;
+  margin-top: 10px;
+  border-radius: 8px;
+  border: none;
+  background: var(--accento);
+  color: var(--accento-testo);
+  font-size: 0.92rem;
+  font-weight: 600;
+}
+
+/* ---------- Marchio ----------
+
+   "CL" pieno e "audio" leggero restano il gioco di parole su
+   "Claudio", ma le due parti vanno tenute visivamente separate
+   (spazio esplicito, non solo il contrasto di peso): scritte unite
+   si leggono troppo letteralmente come il nome proprio per esteso,
+   mentre distanziate restano un rimando, non una trascrizione. */
+
+.blocco-logo {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.logo-app {
+  font-size: 1.32rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  margin: 0;
+  line-height: 1.1;
+}
+
+.logo-app span {
+  font-weight: 300;
+  letter-spacing: 0.01em;
+  color: var(--testo-attenuato);
+  margin-left: 0.32em;
+}
+
+.payoff-app {
+  margin: 0;
+  font-size: 0.62rem;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--testo-attenuato);
+}
+
+/* ---------- Diagnostica dei motori neurali ---------- */
+
+.elenco-requisiti {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0;
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.elenco-requisiti li {
+  padding: 7px 9px;
+  border-radius: 6px;
+  margin-bottom: 6px;
+  border-left: 3px solid var(--bordo);
+  background: var(--bg-elevata);
+}
+
+.elenco-requisiti li span { color: var(--testo-attenuato); }
+
+.requisito-ok { border-left-color: var(--accento); }
+.requisito-ko { border-left-color: var(--pericolo); }
+
+/* ---------- Copertine ---------- */
+
+.copertina img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  border-radius: inherit;
+}
+
+/* ---------- Equalizzatore ---------- */
+
+.preset-equalizzatore {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  margin: 8px 0 12px 0;
+}
+
+.preset-equalizzatore button {
+  padding: 8px 4px;
+  border-radius: 6px;
+  border: 1px solid var(--bordo);
+  background: var(--bg-elevata);
+  color: var(--testo);
+  font-size: 0.74rem;
+}
+
+.bande-equalizzatore label {
+  display: block;
+  margin-top: 8px;
+  font-size: 0.82rem;
+}
+
+.bande-equalizzatore input[type="range"] { width: 100%; }
+
+.disattivata {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+</style>
+</head>
+<body>
+
+<div id="app">
+
+  <!-- ===================== VISTA LIBRERIA ===================== -->
+  <section class="vista" id="vista-libreria">
+    <div class="barra-superiore">
+      <div class="blocco-logo">
+        <h1 class="logo-app">CL <span>audio</span></h1>
+        <p class="payoff-app">Audio Converter Library</p>
+      </div>
+      <button class="icona-bottone" id="bottone-impostazioni" title="Impostazioni" aria-label="Impostazioni">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      </button>
+    </div>
+    <div style="padding-top:14px;">
+      <div class="libreria-intestazione">
+        <h2>I tuoi libri</h2>
+        <div class="azioni-libreria">
+          <button class="bottone-importa" id="bottone-importa">Importa file</button>
+          <button class="bottone-importa secondario" id="bottone-apri-testo">Incolla testo</button>
+        </div>
+      </div>
+      <input type="file" id="input-file" accept=".pdf,.epub,.txt,.md,.mobi,.azw,.azw3,.prc" multiple hidden>
+      <div class="griglia-libri" id="griglia-libri"></div>
+      <div class="libreria-vuota" id="libreria-vuota" hidden>
+        Nessun libro importato.<br>Tocca "Importa file" per caricare un PDF, EPUB, MOBI, AZW3 o TXT.
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== VISTA LETTURA ===================== -->
+  <section class="vista" id="vista-lettura" hidden style="display:flex; flex-direction:column; padding:0;">
+    <div class="barra-superiore">
+      <button class="icona-bottone" id="bottone-indietro" title="Torna alla libreria" aria-label="Torna alla libreria">
+        <svg viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+      </button>
+      <h1 id="titolo-lettura">—</h1>
+      <button class="icona-bottone" id="bottone-capitoli" title="Capitoli" aria-label="Capitoli">
+        <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h7"/></svg>
+      </button>
+      <button class="icona-bottone" id="bottone-segnalibri" title="Segnalibri" aria-label="Segnalibri">
+        <svg viewBox="0 0 24 24"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+      </button>
+    </div>
+
+    <div class="vista" style="padding-bottom:8px;">
+      <div class="riga-capitolo-nav">
+        <button class="icona-bottone" id="bottone-capitolo-precedente" title="Capitolo precedente" aria-label="Capitolo precedente">
+          <svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>
+        </button>
+        <div class="info-capitolo-corrente" id="info-capitolo-corrente">—</div>
+        <button class="icona-bottone" id="bottone-capitolo-successivo" title="Capitolo successivo" aria-label="Capitolo successivo">
+          <svg viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg>
+        </button>
+      </div>
+      <div class="barra-selezione" id="barra-selezione" hidden>
+        <span id="contatore-selezione">0 paragrafi</span>
+        <label class="interruttore-ripeti"><input type="checkbox" id="chk-ripeti-coda"> Ripeti</label>
+        <button id="bottone-leggi-selezione" disabled>Leggi selezione</button>
+      </div>
+      <div class="pannello-testo" id="pannello-testo"></div>
+    </div>
+
+    <div class="dock-controlli">
+      <input type="range" class="scrubber" id="scrubber" min="0" max="100" value="0">
+      <div class="etichette-scrubber">
+        <span id="scrubber-posizione">0%</span>
+        <span class="indicatore-pagina" id="indicatore-pagina" hidden>
+          <input type="number" id="campo-pagina" min="1" value="1" aria-label="Pagina corrente">
+          <span id="totale-pagine"></span>
+        </span>
+        <span id="scrubber-tempo-stimato"></span>
+      </div>
+
+      <div class="riga-trasporto">
+        <button class="bottone-trasporto" id="bottone-indietro-frase" title="Frase precedente" aria-label="Frase precedente">
+          <svg viewBox="0 0 24 24"><path d="M19 20L9 12l10-8v16zM5 19V5"/></svg>
+        </button>
+        <button class="bottone-trasporto" id="bottone-ripeti-frase" title="Ripeti frase" aria-label="Ripeti frase">
+          <svg viewBox="0 0 24 24"><path d="M17 2.1l4 4-4 4"/><path d="M3 12.1v-2a4 4 0 0 1 4-4h14"/><path d="M7 21.9l-4-4 4-4"/><path d="M21 11.9v2a4 4 0 0 1-4 4H3"/></svg>
+        </button>
+        <button class="bottone-play" id="bottone-play" title="Riproduci" aria-label="Riproduci">
+          <svg viewBox="0 0 24 24" id="icona-play"><polygon points="6 4 20 12 6 20 6 4"/></svg>
+        </button>
+        <button class="bottone-trasporto" id="bottone-nota" title="Aggiungi nota" aria-label="Aggiungi nota">
+          <svg viewBox="0 0 24 24"><path d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>
+        </button>
+        <button class="bottone-trasporto" id="bottone-avanti-frase" title="Frase successiva" aria-label="Frase successiva">
+          <svg viewBox="0 0 24 24"><path d="M5 4l10 8-10 8V4zM19 5v14"/></svg>
+        </button>
+      </div>
+
+      <div class="riga-velocita">
+        <button class="bottone-incremento" id="velocita-meno" aria-label="Diminuisci velocità">−</button>
+        <input type="range" id="velocita-slider" min="0.5" max="4" step="0.1" value="1">
+        <span class="etichetta-velocita" id="velocita-etichetta">1.0x</span>
+        <button class="bottone-incremento" id="velocita-piu" aria-label="Aumenta velocità">+</button>
+      </div>
+
+      <div class="bottoniera-secondaria">
+        <button class="icona-bottone" id="bottone-segna-posizione" title="Aggiungi segnalibro qui" aria-label="Aggiungi segnalibro qui">
+          <svg viewBox="0 0 24 24"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+        </button>
+        <button class="icona-bottone" id="bottone-copia-testo" title="Copia il passaggio corrente" aria-label="Copia il passaggio corrente">
+          <svg viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+        </button>
+        <button class="icona-bottone" id="bottone-carattere-meno" title="Riduci il testo" aria-label="Riduci la dimensione del testo">
+          <svg viewBox="0 0 24 24"><path d="M4 19l6-14 6 14M6.5 14h7"/></svg>
+        </button>
+        <button class="icona-bottone" id="bottone-carattere-piu" title="Ingrandisci il testo" aria-label="Ingrandisci la dimensione del testo">
+          <svg viewBox="0 0 24 24"><path d="M2 20l7-16 7 16M4.5 14h9M18 9v8M14 13h8"/></svg>
+        </button>
+        <button class="icona-bottone" id="bottone-selezione" title="Seleziona paragrafi" aria-label="Seleziona più paragrafi da leggere in sequenza">
+          <svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+        </button>
+        <button class="icona-bottone" id="bottone-metadati" title="Modifica metadati" aria-label="Modifica i metadati del libro">
+          <svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z"/></svg>
+        </button>
+        <button class="icona-bottone" id="bottone-schermo-intero" title="Schermo intero" aria-label="Attiva o disattiva lo schermo intero">
+          <svg viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
+        </button>
+        <button class="icona-bottone" id="bottone-opzioni-voce" title="Opzioni di lettura" aria-label="Opzioni di lettura">
+          <svg viewBox="0 0 24 24"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></svg>
+        </button>
+        <button class="icona-bottone" id="bottone-tema" title="Cambia tema" aria-label="Cambia tema giorno/notte">
+          <svg viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== NAVIGAZIONE INFERIORE ===================== -->
+  <nav class="nav-inferiore" id="nav-inferiore">
+    <button class="attivo" data-vista="libreria">
+      <svg viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20M4 19.5A2.5 2.5 0 0 0 6.5 22H20V2H6.5A2.5 2.5 0 0 0 4 4.5z"/></svg>
+      Libreria
+    </button>
+    <button data-vista="lettura">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/></svg>
+      In ascolto
+    </button>
+  </nav>
+
+  <!-- ===================== CASSETTO CAPITOLI ===================== -->
+  <div class="sfondo-cassetto" id="sfondo-cassetto-capitoli" hidden></div>
+  <div class="cassetto" id="cassetto-capitoli" hidden style="display:none;">
+    <div class="maniglia-cassetto"></div>
+    <h3>Capitoli</h3>
+    <div id="elenco-capitoli"></div>
+  </div>
+
+  <!-- ===================== CASSETTO SEGNALIBRI ===================== -->
+  <div class="sfondo-cassetto" id="sfondo-cassetto-segnalibri" hidden></div>
+  <div class="cassetto" id="cassetto-segnalibri" hidden style="display:none;">
+    <div class="maniglia-cassetto"></div>
+    <h3>Segnalibri e note</h3>
+    <div id="elenco-segnalibri"></div>
+  </div>
+
+  <!-- ===================== CASSETTO TESTO INCOLLATO ===================== -->
+  <div class="sfondo-cassetto" id="sfondo-cassetto-testo" hidden></div>
+  <div class="cassetto" id="cassetto-testo" hidden style="display:none;">
+    <div class="maniglia-cassetto"></div>
+    <h3>Incolla o digita un testo</h3>
+    <div class="riga-impostazione">
+      <label for="campo-titolo-incollato">Titolo (facoltativo)</label>
+      <input type="text" id="campo-titolo-incollato" placeholder="Senza titolo">
+    </div>
+    <div class="riga-impostazione">
+      <label for="area-testo-incollato">Testo da ascoltare</label>
+      <textarea id="area-testo-incollato" rows="10" placeholder="Incolla qui il testo…"></textarea>
+    </div>
+    <button class="bottone-principale" id="bottone-importa-testo">Aggiungi alla libreria</button>
+  </div>
+
+  <!-- ===================== CASSETTO METADATI ===================== -->
+  <div class="sfondo-cassetto" id="sfondo-cassetto-metadati" hidden></div>
+  <div class="cassetto" id="cassetto-metadati" hidden style="display:none;">
+    <div class="maniglia-cassetto"></div>
+    <h3>Metadati del libro</h3>
+    <div class="riga-impostazione">
+      <label for="campo-meta-titolo">Titolo</label>
+      <input type="text" id="campo-meta-titolo">
+    </div>
+    <div class="riga-impostazione">
+      <label for="campo-meta-autore">Autore</label>
+      <input type="text" id="campo-meta-autore" placeholder="Non indicato">
+    </div>
+    <p class="nota-impostazione" id="info-import-libro"></p>
+    <button class="bottone-principale" id="bottone-salva-metadati">Salva</button>
+  </div>
+
+  <!-- ===================== CASSETTO OPZIONI DI LETTURA ===================== -->
+  <div class="sfondo-cassetto" id="sfondo-cassetto-voce" hidden></div>
+  <div class="cassetto" id="cassetto-voce" hidden style="display:none;">
+    <div class="maniglia-cassetto"></div>
+    <h3>Opzioni di lettura</h3>
+
+    <div class="riga-impostazione">
+      <label for="slider-tono-voce">Tono della voce: <span id="tono-voce-etichetta">1.0</span></label>
+      <input type="range" id="slider-tono-voce" min="0.5" max="2" step="0.1" value="1">
+    </div>
+
+    <div class="riga-impostazione">
+      <label>
+        <input type="checkbox" id="chk-spezza-frasi" checked>
+        Spezza le frasi lunghe
+      </label>
+      <p class="nota-impostazione">Le frasi lunghe vengono divise in unità più brevi, tagliando dopo virgole o punti e virgola, così che la pausa cada dove la punteggiatura la prevede.</p>
+    </div>
+
+    <div class="riga-impostazione">
+      <label for="sel-limite-caratteri">Lunghezza massima di un'unità</label>
+      <select id="sel-limite-caratteri">
+        <option value="100">100 caratteri</option>
+        <option value="200">200 caratteri</option>
+        <option value="250" selected>250 caratteri</option>
+        <option value="300">300 caratteri</option>
+        <option value="400">400 caratteri</option>
+        <option value="500">500 caratteri</option>
+      </select>
+    </div>
+
+    <div class="riga-impostazione" id="sezione-equalizzatore">
+      <label>Equalizzatore</label>
+      <p class="nota-impostazione" id="avviso-equalizzatore" hidden>L'equalizzatore richiede un motore neurale. La sintesi di sistema invia il parlato direttamente all'uscita del dispositivo, senza esporre alcun punto in cui inserire un filtro: non è una limitazione dell'applicazione ma della piattaforma.</p>
+
+      <div class="preset-equalizzatore" id="preset-equalizzatore">
+        <button data-preset="neutro">Neutro</button>
+        <button data-preset="caldo">Voce calda</button>
+        <button data-preset="chiarezza">Chiarezza</button>
+        <button data-preset="notte">Notte</button>
+      </div>
+
+      <div class="bande-equalizzatore" id="bande-equalizzatore">
+        <label for="eq-bassi">Bassi: <span id="eq-bassi-etichetta">0 dB</span></label>
+        <input type="range" id="eq-bassi" min="-12" max="12" step="1" value="0">
+        <label for="eq-medi">Medi: <span id="eq-medi-etichetta">0 dB</span></label>
+        <input type="range" id="eq-medi" min="-12" max="12" step="1" value="0">
+        <label for="eq-alti">Alti: <span id="eq-alti-etichetta">0 dB</span></label>
+        <input type="range" id="eq-alti" min="-12" max="12" step="1" value="0">
+        <label><input type="checkbox" id="eq-compressione"> Livella i picchi di volume</label>
+        <p class="nota-impostazione">La livellazione riduce gli sbalzi di intensità fra i passaggi: utile per un ascolto prolungato a basso volume o in ambiente rumoroso.</p>
+      </div>
+    </div>
+
+    <div class="riga-impostazione">
+      <label>
+        <input type="checkbox" id="chk-pre-accodamento" checked>
+        Pre-accodamento
+      </label>
+      <p class="nota-impostazione">Consegna in anticipo al motore vocale le unità successive, eliminando la micro-pausa fra una e l'altra. Disattivalo solo in caso di anomalie.</p>
+    </div>
+  </div>
+
+  <!-- ===================== CASSETTO IMPOSTAZIONI ===================== -->
+  <div class="sfondo-cassetto" id="sfondo-cassetto-impostazioni" hidden></div>
+  <div class="cassetto" id="cassetto-impostazioni" hidden style="display:none;">
+    <div class="maniglia-cassetto"></div>
+    <h3>Impostazioni</h3>
+
+    <div class="statistiche-libro" id="statistiche-libro"></div>
+
+    <div class="riga-impostazione">
+      <label>Tema di lettura</label>
+      <div class="griglia-temi" id="selettore-temi">
+        <button data-tema="chiaro">Chiaro</button>
+        <button data-tema="scuro">Scuro</button>
+        <button data-tema="seppia">Seppia</button>
+        <button data-tema="grigio">Grigio</button>
+        <button data-tema="amoled-ambra">AMOLED ambra</button>
+        <button data-tema="amoled-rosso">AMOLED rosso</button>
+      </div>
+      <p class="nota-impostazione">I due temi AMOLED usano il nero assoluto, che sui pannelli OLED spegne fisicamente i pixel. La variante rossa è pensata per la lettura al buio: la luce rossa interferisce meno con l'adattamento dell'occhio all'oscurità.</p>
+    </div>
+
+    <div class="riga-impostazione">
+      <label>Importazione dei PDF</label>
+      <p class="nota-impostazione">Ogni fase dell'elaborazione può essere disattivata singolarmente. Se un documento risulta mal riformattato, disattivare una fase per volta permette di individuare quale la guasta. Le modifiche valgono per le importazioni successive, non per i libri già presenti.</p>
+      <label><input type="checkbox" id="chk-rimuovi-intestazioni" checked> Rimuovi intestazioni e numeri di pagina ricorrenti</label>
+      <label><input type="checkbox" id="chk-unisci-sillabazioni" checked> Ricongiungi le parole spezzate a fine riga</label>
+      <label><input type="checkbox" id="chk-riconosci-titoli" checked> Riconosci i titoli dal carattere tipografico</label>
+      <label><input type="checkbox" id="chk-ricostruisci-paragrafi" checked> Ricostruisci i paragrafi</label>
+    </div>
+
+    <div class="riga-impostazione">
+      <label for="selettore-motore">Motore di sintesi vocale</label>
+      <select id="selettore-motore"></select>
+    </div>
+
+    <div class="riga-impostazione">
+      <label for="selettore-voce">Voce</label>
+      <select id="selettore-voce"></select>
+      <button class="bottone-secondario" id="bottone-prova-voce" style="margin-top:8px; width:100%;">Ascolta un esempio</button>
+    </div>
+
+    <div class="riga-impostazione" id="sezione-piper" hidden>
+      <label for="selettore-voce-piper">Voce neurale</label>
+      <select id="selettore-voce-piper"></select>
+      <button class="bottone-secondario" id="bottone-scarica-voce" style="margin-top:8px; width:100%;">Scarica la voce selezionata</button>
+      <p class="nota-impostazione" id="stato-scaricamento-piper"></p>
+      <div id="diagnostica-piper"></div>
+      <button class="bottone-secondario" id="bottone-riverifica-piper" style="margin-top:8px; width:100%;">Ripeti la verifica dei requisiti</button>
+    </div>
+
+    <div class="riga-impostazione" id="riga-tono">
+      <label for="slider-tono">Tono della voce: <span id="tono-etichetta">1.0</span></label>
+      <input type="range" id="slider-tono" min="0.5" max="2" step="0.1" value="1">
+    </div>
+
+    <div class="gruppo-bottoni-cassetto">
+      <button class="bottone-secondario" id="bottone-esporta">Esporta libreria</button>
+      <button class="bottone-secondario" id="bottone-importa-backup">Importa backup</button>
+    </div>
+    <input type="file" id="input-backup" accept="application/json" hidden>
+    <div class="gruppo-bottoni-cassetto">
+      <button class="bottone-secondario" id="bottone-diagnostica">Registro diagnostico</button>
+    </div>
+    <div class="gruppo-bottoni-cassetto">
+      <button class="bottone-secondario bottone-pericolo" id="bottone-cancella-tutto">Cancella intera libreria</button>
+    </div>
+    <div class="versione-app" id="versione-app">—</div>
+  </div>
+
+  <!-- ===================== CASSETTO DIAGNOSTICA ===================== -->
+  <div class="sfondo-cassetto" id="sfondo-cassetto-diagnostica" hidden></div>
+  <div class="cassetto" id="cassetto-diagnostica" hidden style="display:none;">
+    <div class="maniglia-cassetto"></div>
+    <h3>Registro diagnostico</h3>
+    <p style="font-size:0.8rem; color:var(--testo-attenuato); margin-top:-6px;">
+      Eventi della sintesi vocale (avvii, blocchi, errori, cambi di stato). Se la lettura si interrompe, apri questo registro subito dopo e copialo per segnalarlo.
+    </p>
+    <textarea id="registro-diagnostico" readonly style="width:100%; height:220px; font-family:monospace; font-size:0.72rem; background:var(--bg-elevata); color:var(--testo); border:1px solid var(--bordo); border-radius:6px; padding:8px; resize:vertical;"></textarea>
+    <div class="gruppo-bottoni-cassetto">
+      <button class="bottone-secondario" id="bottone-copia-registro">Copia</button>
+      <button class="bottone-secondario" id="bottone-aggiorna-registro">Aggiorna</button>
+      <button class="bottone-secondario bottone-pericolo" id="bottone-svuota-registro">Svuota</button>
+    </div>
+  </div>
+
+  <div class="overlay-caricamento" id="overlay-caricamento" hidden>Importazione in corso…</div>
+  <div class="toast" id="toast" hidden></div>
+</div>
+
+<!-- Librerie di parsing (da CDN, messe in cache dal service worker dopo il primo avvio) -->
+
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/epubjs/0.3.93/epub.min.js"></script>
+<script>
+/* ===== js/db.js ===== */
+/* =========================================================
+   db.js — livello di persistenza (IndexedDB)
+   Tre object store:
+     - books:     un record per libro importato (con il file originale
+                  come Blob, il testo segmentato in frasi, i capitoli
+                  estratti, e la posizione di lettura corrente)
+     - bookmarks: segnalibri di posizione e note testuali, collegati
+                  a un bookId tramite indice
+     - settings:  coppie chiave/valore per le preferenze globali
+                  (motore TTS, voce, velocità, tono, tema)
+
+   Nota: su file:// alcuni browser applicano limiti più severi o
+   comportamenti non garantiti per IndexedDB. Su origine HTTPS
+   (es. GitHub Pages) il comportamento è pienamente affidabile.
+   ========================================================= */
+
+const LibreriaDB = (() => {
+  const NOME_DB = "lettore-ebook-db";
+  const VERSIONE_DB = 1;
+  let dbPromise = null;
+
+  function apri() {
+    if (dbPromise) return dbPromise;
+    dbPromise = new Promise((resolve, reject) => {
+      const richiesta = indexedDB.open(NOME_DB, VERSIONE_DB);
+
+      richiesta.onupgradeneeded = (evento) => {
+        const db = evento.target.result;
+
+        if (!db.objectStoreNames.contains("books")) {
+          const books = db.createObjectStore("books", { keyPath: "id", autoIncrement: true });
+          books.createIndex("dataImportazione", "dataImportazione");
+        }
+
+        if (!db.objectStoreNames.contains("bookmarks")) {
+          const bookmarks = db.createObjectStore("bookmarks", { keyPath: "id", autoIncrement: true });
+          bookmarks.createIndex("bookId", "bookId");
+        }
+
+        if (!db.objectStoreNames.contains("settings")) {
+          db.createObjectStore("settings", { keyPath: "chiave" });
+        }
+      };
+
+      richiesta.onsuccess = (evento) => resolve(evento.target.result);
+      richiesta.onerror = (evento) => reject(evento.target.error);
+    });
+    return dbPromise;
+  }
+
+  function transazione(nomiStore, modalita) {
+    return apri().then((db) => db.transaction(nomiStore, modalita));
+  }
+
+  // ---------- Libri ----------
+
+  async function aggiungiLibro(libro) {
+    const tx = await transazione(["books"], "readwrite");
+    return new Promise((resolve, reject) => {
+      const richiesta = tx.objectStore("books").add(libro);
+      richiesta.onsuccess = () => resolve(richiesta.result);
+      richiesta.onerror = () => reject(richiesta.error);
+    });
+  }
+
+  async function aggiornaLibro(id, modifiche) {
+    const tx = await transazione(["books"], "readwrite");
+    const store = tx.objectStore("books");
+    return new Promise((resolve, reject) => {
+      const richiestaLettura = store.get(id);
+      richiestaLettura.onsuccess = () => {
+        const libro = richiestaLettura.result;
+        if (!libro) { reject(new Error("Libro non trovato: " + id)); return; }
+        Object.assign(libro, modifiche);
+        const richiestaScrittura = store.put(libro);
+        richiestaScrittura.onsuccess = () => resolve(libro);
+        richiestaScrittura.onerror = () => reject(richiestaScrittura.error);
+      };
+      richiestaLettura.onerror = () => reject(richiestaLettura.error);
+    });
+  }
+
+  async function ottieniLibro(id) {
+    const tx = await transazione(["books"], "readonly");
+    return new Promise((resolve, reject) => {
+      const richiesta = tx.objectStore("books").get(id);
+      richiesta.onsuccess = () => resolve(richiesta.result || null);
+      richiesta.onerror = () => reject(richiesta.error);
+    });
+  }
+
+  async function ottieniTuttiILibri() {
+    const tx = await transazione(["books"], "readonly");
+    return new Promise((resolve, reject) => {
+      const richiesta = tx.objectStore("books").getAll();
+      richiesta.onsuccess = () => resolve(richiesta.result || []);
+      richiesta.onerror = () => reject(richiesta.error);
+    });
+  }
+
+  async function eliminaLibro(id) {
+    const tx = await transazione(["books", "bookmarks"], "readwrite");
+    return new Promise((resolve, reject) => {
+      tx.objectStore("books").delete(id);
+      const indice = tx.objectStore("bookmarks").index("bookId");
+      const cursoreRichiesta = indice.openCursor(IDBKeyRange.only(id));
+      cursoreRichiesta.onsuccess = (evento) => {
+        const cursore = evento.target.result;
+        if (cursore) {
+          cursore.delete();
+          cursore.continue();
+        }
+      };
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  }
+
+  // ---------- Segnalibri / note ----------
+  // tipo: "posizione" (ripresa ascolto) oppure "nota" (annotazione testuale)
+
+  async function aggiungiSegnalibro(segnalibro) {
+    const tx = await transazione(["bookmarks"], "readwrite");
+    return new Promise((resolve, reject) => {
+      const richiesta = tx.objectStore("bookmarks").add(segnalibro);
+      richiesta.onsuccess = () => resolve(richiesta.result);
+      richiesta.onerror = () => reject(richiesta.error);
+    });
+  }
+
+  async function eliminaSegnalibro(id) {
+    const tx = await transazione(["bookmarks"], "readwrite");
+    return new Promise((resolve, reject) => {
+      const richiesta = tx.objectStore("bookmarks").delete(id);
+      richiesta.onsuccess = () => resolve();
+      richiesta.onerror = () => reject(richiesta.error);
+    });
+  }
+
+  async function segnalibriPerLibro(bookId) {
+    const tx = await transazione(["bookmarks"], "readonly");
+    return new Promise((resolve, reject) => {
+      const indice = tx.objectStore("bookmarks").index("bookId");
+      const richiesta = indice.getAll(IDBKeyRange.only(bookId));
+      richiesta.onsuccess = () => {
+        const risultati = (richiesta.result || []).sort((a, b) => a.indiceFrase - b.indiceFrase);
+        resolve(risultati);
+      };
+      richiesta.onerror = () => reject(richiesta.error);
+    });
+  }
+
+  // ---------- Impostazioni ----------
+
+  async function ottieniImpostazione(chiave, valorePredefinito = null) {
+    const tx = await transazione(["settings"], "readonly");
+    return new Promise((resolve, reject) => {
+      const richiesta = tx.objectStore("settings").get(chiave);
+      richiesta.onsuccess = () => resolve(richiesta.result ? richiesta.result.valore : valorePredefinito);
+      richiesta.onerror = () => reject(richiesta.error);
+    });
+  }
+
+  async function impostaImpostazione(chiave, valore) {
+    const tx = await transazione(["settings"], "readwrite");
+    return new Promise((resolve, reject) => {
+      const richiesta = tx.objectStore("settings").put({ chiave, valore });
+      richiesta.onsuccess = () => resolve();
+      richiesta.onerror = () => reject(richiesta.error);
+    });
+  }
+
+  // ---------- Backup / ripristino ----------
+
+  function blobInBase64(blob) {
+    return new Promise((resolve, reject) => {
+      const lettore = new FileReader();
+      lettore.onloadend = () => resolve(lettore.result); // data URL completo
+      lettore.onerror = () => reject(lettore.error);
+      lettore.readAsDataURL(blob);
+    });
+  }
+
+  async function base64InBlob(dataUrl) {
+    const risposta = await fetch(dataUrl);
+    return risposta.blob();
+  }
+
+  async function esportaTutto() {
+    const libri = await ottieniTuttiILibri();
+    const libriSerializzati = [];
+    for (const libro of libri) {
+      const copia = { ...libro };
+      if (copia.fileBlob) {
+        copia.fileBlobBase64 = await blobInBase64(copia.fileBlob);
+        delete copia.fileBlob;
+      }
+      libriSerializzati.push(copia);
+    }
+
+    const tuttiSegnalibri = [];
+    for (const libro of libri) {
+      const segnalibri = await segnalibriPerLibro(libro.id);
+      tuttiSegnalibri.push(...segnalibri);
+    }
+
+    return {
+      versioneExport: 1,
+      dataExport: new Date().toISOString(),
+      libri: libriSerializzati,
+      segnalibri: tuttiSegnalibri,
+    };
+  }
+
+  async function importaTutto(dati) {
+    if (!dati || !Array.isArray(dati.libri)) {
+      throw new Error("File di backup non valido.");
+    }
+    const mappaVecchioNuovoId = {};
+
+    for (const libro of dati.libri) {
+      const copia = { ...libro };
+      const vecchioId = copia.id;
+      delete copia.id;
+      if (copia.fileBlobBase64) {
+        copia.fileBlob = await base64InBlob(copia.fileBlobBase64);
+        delete copia.fileBlobBase64;
+      }
+      const nuovoId = await aggiungiLibro(copia);
+      mappaVecchioNuovoId[vecchioId] = nuovoId;
+    }
+
+    if (Array.isArray(dati.segnalibri)) {
+      for (const segnalibro of dati.segnalibri) {
+        const copia = { ...segnalibro };
+        delete copia.id;
+        copia.bookId = mappaVecchioNuovoId[copia.bookId] ?? copia.bookId;
+        await aggiungiSegnalibro(copia);
+      }
+    }
+
+    return mappaVecchioNuovoId;
+  }
+
+  async function cancellaTutto() {
+    const tx = await transazione(["books", "bookmarks"], "readwrite");
+    return new Promise((resolve, reject) => {
+      tx.objectStore("books").clear();
+      tx.objectStore("bookmarks").clear();
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  }
+
+  return {
+    aggiungiLibro,
+    aggiornaLibro,
+    ottieniLibro,
+    ottieniTuttiILibri,
+    eliminaLibro,
+    aggiungiSegnalibro,
+    eliminaSegnalibro,
+    segnalibriPerLibro,
+    ottieniImpostazione,
+    impostaImpostazione,
+    esportaTutto,
+    importaTutto,
+    cancellaTutto,
+  };
+})();
+
+
+/* ===== js/utils.js ===== */
+/* =========================================================
+   utils.js — segmentazione e pulizia del testo
+
+   La pulizia viene eseguita una sola volta, in fase di importazione,
+   e il risultato viene salvato nel libro: non viene ricalcolata ad
+   ogni lettura.
+   ========================================================= */
+
+/* ---------------------------------------------------------
+   1. NORMALIZZAZIONE TIPOGRAFICA (confidenza alta)
+
+   Un testo composto per la stampa contiene segni pensati per
+   l'occhio, non per un sintetizzatore: trattini di varia foggia,
+   virgolette curve, spazi unificatori, puntini di sospensione come
+   carattere singolo. Lasciati così, alcuni vengono pronunciati come
+   parole o generano pause anomale.
+   --------------------------------------------------------- */
+
+function normalizzaTipografia(testo) {
+  return (testo || "")
+    .replace(/\u00A0/g, " ")                    // spazio unificatore
+    .replace(/[\u2018\u2019\u201B]/g, "'")      // apostrofi curvi
+    .replace(/[\u201C\u201D\u201E]/g, '"')      // virgolette curve
+    .replace(/\u2026/g, "...")                  // puntini di sospensione
+    .replace(/[\u2010\u2011\u2012\u2013\u2014\u2015]/g, "-") // trattini di varia lunghezza
+    .replace(/\u200B/g, "")                     // spazio a larghezza nulla
+    .replace(/[ \t]{2,}/g, " ");                // spazi multipli
+}
+
+/* ---------------------------------------------------------
+   2. RICONGIUNZIONE DELLE PAROLE SILLABATE (confidenza alta)
+
+   Nel libro a stampa una parola che non entra nella riga viene
+   spezzata con un trattino. Estratta così com'è, diventa
+   "produ - cono": il sintetizzatore pronuncia due frammenti privi
+   di senso e un trattino isolato.
+
+   Euristica: riga che termina con lettera + trattino, riga seguente
+   che inizia con lettera minuscola. Un trattino di punteggiatura
+   reale è normalmente seguito da maiuscola o da una parola autonoma,
+   non da una sillaba che completa la precedente.
+   --------------------------------------------------------- */
+
+function unisciSillabazioni(righe) {
+  const lavoro = righe.slice();
+  const risultato = [];
+  for (let i = 0; i < lavoro.length; i++) {
+    const riga = lavoro[i];
+    if (/\p{L}\s*[-\u00AD_]\s*$/u.test(riga) && i + 1 < lavoro.length) {
+      if (/^\s*\p{Ll}/u.test(lavoro[i + 1])) {
+        lavoro[i + 1] = riga.replace(/\s*[-\u00AD_]\s*$/u, "") + lavoro[i + 1].replace(/^\s+/u, "");
+        continue;
+      }
+    }
+    risultato.push(riga);
+  }
+  return risultato;
+}
+
+/* ---------------------------------------------------------
+   3. RIMOZIONE DI INTESTAZIONI E PIÈ DI PAGINA RICORRENTI
+      (confidenza media, calibrata sulla ricorrenza)
+
+   Titolo del libro, nome del capitolo e numero di pagina ripetuti
+   su ogni pagina sono utili sulla carta e molesti in ascolto, dove
+   interrompono il periodo ogni poche frasi.
+
+   Criterio: si raccolgono prima e ultima riga di ogni pagina; quelle
+   che ricorrono (a meno del numero variabile) su almeno il 30% delle
+   pagine vengono considerate elementi di impaginazione e rimosse.
+   La soglia è prudenziale: meglio lasciare passare qualche
+   intestazione che amputare righe di testo reale.
+   --------------------------------------------------------- */
+
+function impronaRiga(riga) {
+  // Sostituisce le cifre con un segnaposto: "Capitolo 3" e
+  // "Capitolo 7" condividono la stessa impronta.
+  return riga.trim().toLowerCase().replace(/\d+/g, "#").replace(/\s+/g, " ");
+}
+
+function individuaRigheRicorrenti(righePerPagina, sogliaFrazione = 0.3) {
+  const numeroPagine = righePerPagina.length;
+  if (numeroPagine < 5) return new Set(); // troppo poche per un giudizio attendibile
+
+  const conteggi = new Map();
+  righePerPagina.forEach((righe) => {
+    const candidate = [];
+    if (righe.length) candidate.push(righe[0]);
+    if (righe.length > 1) candidate.push(righe[righe.length - 1]);
+    // Un'impronta va contata una volta per pagina, non due
+    new Set(candidate.map(impronaRiga)).forEach((impronta) => {
+      if (!impronta || impronta.length < 2) return;
+      conteggi.set(impronta, (conteggi.get(impronta) || 0) + 1);
+    });
+  });
+
+  const soglia = Math.max(3, Math.floor(numeroPagine * sogliaFrazione));
+  const ricorrenti = new Set();
+  conteggi.forEach((conteggio, impronta) => {
+    if (conteggio >= soglia) ricorrenti.add(impronta);
+  });
+  return ricorrenti;
+}
+
+function eNumeroPaginaIsolato(riga) {
+  return /^\s*[-—\[(]?\s*\d{1,4}\s*[-—\])]?\s*$/.test(riga);
+}
+
+function rimuoviElementiImpaginazione(righePerPagina) {
+  const ricorrenti = individuaRigheRicorrenti(righePerPagina);
+  let righeRimosse = 0;
+
+  const pulite = righePerPagina.map((righe) =>
+    righe.filter((riga, indice) => {
+      const primaOUltima = indice === 0 || indice === righe.length - 1;
+      if (eNumeroPaginaIsolato(riga)) { righeRimosse += 1; return false; }
+      if (primaOUltima && ricorrenti.has(impronaRiga(riga))) { righeRimosse += 1; return false; }
+      return true;
+    })
+  );
+
+  return { righePerPagina: pulite, righeRimosse, impronteRicorrenti: ricorrenti.size };
+}
+
+/* ---------------------------------------------------------
+   4. RICOSTRUZIONE DEI PARAGRAFI (confidenza media su PDF)
+
+   Un PDF non contiene paragrafi: contiene testo posizionato. La
+   ricostruzione si basa su indizi indiretti — una riga che termina
+   con punteggiatura forte e che è seguita da una riga iniziante per
+   maiuscola segna verosimilmente la fine di un paragrafo; una riga
+   molto più corta della media segnala la fine di un blocco.
+
+   Funziona bene su impaginazioni regolari a colonna singola, meno
+   su layout complessi. Negli EPUB non serve: i paragrafi sono già
+   marcati esplicitamente nel formato.
+   --------------------------------------------------------- */
+
+function ricostruisciParagrafi(righe) {
+  if (!righe.length) return [];
+  const lunghezze = righe.map((r) => r.trim().length).filter((l) => l > 0);
+  if (!lunghezze.length) return [];
+  const lunghezzaMedia = lunghezze.reduce((a, b) => a + b, 0) / lunghezze.length;
+
+  const paragrafi = [];
+  let corrente = [];
+
+  righe.forEach((rigaGrezza, indice) => {
+    const riga = rigaGrezza.trim();
+    if (!riga) {
+      if (corrente.length) { paragrafi.push(corrente.join(" ")); corrente = []; }
+      return;
+    }
+    corrente.push(riga);
+
+    const terminaPeriodo = /[.!?:;"»)]\s*$/.test(riga);
+    const rigaCorta = riga.length < lunghezzaMedia * 0.65;
+    const prossima = (righe[indice + 1] || "").trim();
+    const prossimaInizioForte = /^["«(]?\p{Lu}/u.test(prossima) || prossima === "";
+
+    if (terminaPeriodo && (rigaCorta || prossimaInizioForte)) {
+      paragrafi.push(corrente.join(" "));
+      corrente = [];
+    }
+  });
+
+  if (corrente.length) paragrafi.push(corrente.join(" "));
+  return paragrafi.filter((p) => p.trim().length > 0);
+}
+
+/* ---------------------------------------------------------
+   5. SEGMENTAZIONE IN FRASI
+
+   Confidenza media: il criterio è la punteggiatura forte seguita da
+   spazio. Non riconosce le abbreviazioni puntate italiane più comuni
+   come non terminali, quindi su testi giuridici o tecnici densi di
+   "art.", "cfr.", "pag." può generare frasi innaturalmente brevi. Le
+   abbreviazioni più frequenti sono protette esplicitamente qui sotto.
+   --------------------------------------------------------- */
+
+const ABBREVIAZIONI_PROTETTE = [
+  "sig", "sig.ra", "dott", "dott.ssa", "prof", "prof.ssa", "avv", "ing", "arch",
+  "on", "rev", "mons", "s", "ss", "art", "artt", "cfr", "ecc", "es", "pag", "pagg",
+  "vol", "cap", "fig", "n", "nn", "tab", "op", "cit", "ca", "sec", "a.C", "d.C",
+];
+
+function segnaposto(indice) { return `\u0001A${indice}\u0001`; }
+
+function dividiInFrasi(testo) {
+  let normalizzato = (testo || "").replace(/\s+/g, " ").trim();
+  if (!normalizzato) return [];
+
+  // Le abbreviazioni vengono temporaneamente mascherate, così il
+  // punto che le chiude non viene scambiato per fine frase.
+  ABBREVIAZIONI_PROTETTE.forEach((abbreviazione, i) => {
+    const espressione = new RegExp(
+      `\\b${abbreviazione.replace(/\./g, "\\.")}\\.`,
+      "gi"
+    );
+    normalizzato = normalizzato.replace(espressione, (corrispondenza) =>
+      corrispondenza.slice(0, -1) + segnaposto(i)
+    );
+  });
+
+  const corrispondenze = normalizzato.match(/[^.!?]+[.!?]+(\s+|$)/g);
+  let frasi = corrispondenze ? corrispondenze.map((f) => f.trim()).filter(Boolean) : [normalizzato];
+  if (!frasi.length) frasi = [normalizzato];
+
+  // Ripristino delle abbreviazioni
+  return frasi.map((frase) => {
+    let ripristinata = frase;
+    ABBREVIAZIONI_PROTETTE.forEach((_, i) => {
+      ripristinata = ripristinata.split(segnaposto(i)).join(".");
+    });
+    return ripristinata;
+  });
+}
+
+/* ---------------------------------------------------------
+   6. SUDDIVISIONE DELLE FRASI LUNGHE
+
+   Ogni confine fra unità produce una pausa udibile. Spezzando su un
+   confine di parola qualsiasi, la pausa cade dove l'ascoltatore non
+   se l'aspetta e suona come un punto fuori posto. Spezzando dopo un
+   segno di punteggiatura debole, coincide con una pausa già prevista
+   dal testo. Il taglio su spazio resta l'ultima risorsa.
+   --------------------------------------------------------- */
+
+function spezzaSuSpazi(testo, lunghezzaMassima) {
+  const pezzi = testo.split(/(\s+)/);
+  const blocchi = [];
+  let blocco = "";
+  for (const pezzo of pezzi) {
+    if ((blocco + pezzo).length > lunghezzaMassima && blocco.trim()) {
+      blocchi.push(blocco.trim());
+      blocco = pezzo.trimStart();
+    } else {
+      blocco += pezzo;
+    }
+  }
+  if (blocco.trim()) blocchi.push(blocco.trim());
+  return blocchi.length ? blocchi : [testo];
+}
+
+function spezzaRispettandoPunteggiatura(testo, lunghezzaMassima) {
+  if (testo.length <= lunghezzaMassima) return [testo];
+
+  const segmenti = testo.split(/(?<=[,;:])\s+/);
+  const blocchi = [];
+  let blocco = "";
+  for (const segmento of segmenti) {
+    const candidato = blocco ? blocco + " " + segmento : segmento;
+    if (candidato.length > lunghezzaMassima && blocco) {
+      blocchi.push(blocco);
+      blocco = segmento;
+    } else {
+      blocco = candidato;
+    }
+  }
+  if (blocco) blocchi.push(blocco);
+
+  const risultato = [];
+  blocchi.forEach((b) => {
+    if (b.length <= lunghezzaMassima) risultato.push(b);
+    else risultato.push(...spezzaSuSpazi(b, lunghezzaMassima));
+  });
+  return risultato.length ? risultato : [testo];
+}
+
+function costruisciUnitaDiLettura(frasi, opzioni) {
+  const { spezzaFrasiLunghe = true, limiteCaratteri = 250 } = opzioni || {};
+  if (!spezzaFrasiLunghe) return frasi.slice();
+  const risultato = [];
+  frasi.forEach((frase) => risultato.push(...spezzaRispettandoPunteggiatura(frase, limiteCaratteri)));
+  return risultato;
+}
+
+/* ---------------------------------------------------------
+   7. STATISTICHE E UTILITÀ VARIE
+   --------------------------------------------------------- */
+
+function calcolaStatistiche(frasi) {
+  const testoCompleto = frasi.join(" ");
+  const parole = (testoCompleto.match(/\S+/g) || []).length;
+  return {
+    caratteri: testoCompleto.length,
+    parole,
+    frasi: frasi.length,
+    minutiStimati: Math.max(1, Math.round(parole / 150)),
+  };
+}
+
+function stimaMinutiLettura(numeroUnita, paroleMediePerUnita = 25, paroleAlMinuto = 150) {
+  return Math.max(1, Math.round((numeroUnita * paroleMediePerUnita) / paroleAlMinuto));
+}
+
+function formattaDurata(minutiTotali) {
+  if (minutiTotali < 60) return `${minutiTotali} min`;
+  const ore = Math.floor(minutiTotali / 60);
+  const minuti = minutiTotali % 60;
+  return minuti ? `${ore} h ${minuti} min` : `${ore} h`;
+}
+
+function escapeHtml(testo) {
+  const div = document.createElement("div");
+  div.textContent = testo;
+  return div.innerHTML;
+}
+
+
+/* ===== js/parser-txt.js ===== */
+/* =========================================================
+   parser-txt.js — estrazione frasi e capitoli da testo semplice
+
+   Usato sia per i file .txt sia per il testo incollato direttamente
+   nell'applicazione.
+
+   Correzioni rispetto alla versione precedente:
+   - I titoli riconosciuti venivano registrati nell'indice ma non
+     inseriti nel testo: risultavano quindi né letti né visualizzati.
+     Ora sono unità a pieno titolo, marcate come intestazioni.
+   - Tutte le frasi ricevevano lo stesso numero di paragrafo, con la
+     conseguenza che l'intero documento veniva reso come un unico
+     blocco continuo e la selezione multipla non poteva distinguere
+     un paragrafo dall'altro.
+
+   Riconoscimento dei titoli (confidenza media): righe che iniziano
+   con "Capitolo"/"Cap."/"Parte"/"Chapter" seguite da un numero,
+   oppure righe brevi interamente maiuscole e isolate. Su testi privi
+   di questi pattern il documento resta un capitolo unico: nessuna
+   perdita di contenuto, solo assenza di suddivisione navigabile.
+   ========================================================= */
+
+async function analizzaTXT(testoCompleto) {
+  const righe = normalizzaTipografia(testoCompleto).split(/\r?\n/);
+  const capitoli = [];
+  const frasi = [];
+  const metaFrasi = [];
+  let bufferParagrafo = [];
+  let contatoreParagrafi = 0;
+
+  const regexTitoloCapitolo = /^(capitolo|cap\.?|chapter|parte|libro|sezione)\s+[\divxlcIVXLC]+/i;
+
+  function chiudiParagrafo() {
+    if (!bufferParagrafo.length) return;
+    contatoreParagrafi += 1;
+    const paragrafo = bufferParagrafo.join(" ");
+    dividiInFrasi(paragrafo).forEach((frase) => {
+      frasi.push(frase);
+      metaFrasi.push({ tipo: "paragrafo", paragrafo: contatoreParagrafi, pagina: null });
+    });
+    bufferParagrafo = [];
+  }
+
+  righe.forEach((rigaGrezza) => {
+    const riga = rigaGrezza.trim();
+    if (!riga) { chiudiParagrafo(); return; }
+
+    const eTuttoMaiuscolo =
+      riga.length < 60 && riga === riga.toUpperCase() && /\p{Lu}/u.test(riga);
+    const sembraTitolo = regexTitoloCapitolo.test(riga) || eTuttoMaiuscolo;
+
+    if (sembraTitolo) {
+      chiudiParagrafo();
+      contatoreParagrafi += 1;
+      // Il titolo entra nel testo come unità a sé: va letto ad alta
+      // voce e mostrato come intestazione, non soltanto indicizzato.
+      capitoli.push({ titolo: riga, indiceFrase: frasi.length });
+      frasi.push(riga);
+      metaFrasi.push({ tipo: "titolo", paragrafo: contatoreParagrafi, pagina: null });
+      return;
+    }
+    bufferParagrafo.push(riga);
+  });
+  chiudiParagrafo();
+
+  if (capitoli.length === 0) capitoli.push({ titolo: "Testo", indiceFrase: 0 });
+
+  return {
+    frasi,
+    metaFrasi,
+    capitoli,
+    titolo: null,
+    autore: null,
+    fonteIndice: capitoli.length > 1 ? "testo" : null,
+  };
+}
+
+
+/* ===== js/parser-pdf.js ===== */
+/* =========================================================
+   parser-pdf.js — estrazione frasi e capitoli da file .pdf
+   tramite pdf.js (libreria caricata da CDN in index.html).
+
+   Nota di affidabilità: l'estrazione testo pagina-per-pagina è
+   uno degli usi più consolidati di pdf.js (alta confidenza). La
+   mappatura dell'indice (outline/segnalibri del PDF) sui numeri
+   di pagina usa pdf.getDestination + pdf.getPageIndex: funziona
+   per la grande maggioranza dei PDF con indice strutturato, ma
+   alcune voci con destinazioni non standard possono essere
+   scartate silenziosamente (confidenza media) — in tal caso il
+   libro resta comunque leggibile, solo con un indice capitoli
+   incompleto o assente.
+   ========================================================= */
+
+const URL_WORKER_PDFJS = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+
+function appiattisciOutlinePDF(voci, risultato = []) {
+  for (const voce of voci) {
+    risultato.push(voce);
+    if (voce.items && voce.items.length) appiattisciOutlinePDF(voce.items, risultato);
+  }
+  return risultato;
+}
+
+// unisciSillabazioni è definita in utils.js (versione che gestisce
+// anche il trattino basso e il soft hyphen): qui era duplicata e la
+// definizione locale, caricata dopo, sovrascriveva quella corretta.
+
+/* =========================================================
+   FASE 1 — ESTRAZIONE GREZZA
+
+   Restituisce le righe di ogni pagina con i relativi dati
+   tipografici (dimensione del carattere, coordinate x e y). Nessuna
+   elaborazione: è il materiale grezzo su cui lavorano le fasi
+   successive, e il punto a cui si torna se una fase successiva
+   guasta il testo.
+
+   I dati tipografici non erano raccolti nelle versioni precedenti:
+   senza di essi il riconoscimento dei titoli e la ricostruzione dei
+   paragrafi devono basarsi unicamente sulla punteggiatura, il che
+   spiega buona parte dei risultati insoddisfacenti.
+   ========================================================= */
+
+async function estraiRighePDF(documentoPdf, numeroPagine) {
+  const righePerPagina = [];
+
+  for (let numeroPagina = 1; numeroPagina <= numeroPagine; numeroPagina++) {
+    const pagina = await documentoPdf.getPage(numeroPagina);
+    const contenutoTesto = await pagina.getTextContent();
+
+    const righe = [];
+    let testoCorrente = "";
+    let dimensioneMassima = 0;
+    let xIniziale = null;
+    let yCorrente = null;
+
+    const chiudiRiga = () => {
+      const testo = normalizzaTipografia(testoCorrente);
+      if (testo.trim()) {
+        righe.push({
+          testo: testo.replace(/\s+$/, ""),
+          dimensione: Math.round(dimensioneMassima * 100) / 100,
+          x: xIniziale === null ? 0 : Math.round(xIniziale),
+          y: yCorrente === null ? 0 : Math.round(yCorrente),
+        });
+      }
+      testoCorrente = "";
+      dimensioneMassima = 0;
+      xIniziale = null;
+    };
+
+    contenutoTesto.items.forEach((elemento) => {
+      if (typeof elemento.str !== "string") return;
+      // transform[3] contiene il fattore di scala verticale, che
+      // corrisponde alla dimensione effettiva del carattere; height
+      // non è sempre valorizzato in modo attendibile.
+      const dimensione = elemento.transform
+        ? Math.abs(elemento.transform[3])
+        : (elemento.height || 0);
+      if (dimensione > dimensioneMassima) dimensioneMassima = dimensione;
+      if (xIniziale === null && elemento.transform) xIniziale = elemento.transform[4];
+      if (elemento.transform) yCorrente = elemento.transform[5];
+
+      testoCorrente += elemento.str;
+      if (elemento.hasEOL) chiudiRiga();
+      else testoCorrente += " ";
+    });
+    chiudiRiga();
+
+    righePerPagina.push(righe);
+  }
+
+  return righePerPagina;
+}
+
+/* =========================================================
+   FASE 2 — RICONOSCIMENTO DEI TITOLI
+
+   Un titolo si distingue dal corpo del testo per tre indizi
+   concorrenti: carattere più grande della dimensione dominante del
+   documento, riga breve, assenza di punteggiatura terminale. Il
+   requisito di più indizi concorrenti riduce i falsi positivi (una
+   riga breve di dialogo non diventa un titolo solo perché corta).
+
+   Confidenza media: dipende dalla regolarità tipografica del
+   documento. Su un PDF che compone i titoli con lo stesso corpo del
+   testo, questa fase non ha appigli e non riconoscerà nulla — caso
+   in cui è corretto che non inventi titoli inesistenti.
+   ========================================================= */
+
+function dimensioneDominante(righePerPagina) {
+  const conteggi = new Map();
+  righePerPagina.forEach((righe) =>
+    righe.forEach((riga) => {
+      if (!riga.dimensione) return;
+      const chiave = Math.round(riga.dimensione * 2) / 2;
+      conteggi.set(chiave, (conteggi.get(chiave) || 0) + riga.testo.length);
+    })
+  );
+  let dimensione = 0;
+  let massimo = 0;
+  conteggi.forEach((peso, chiave) => {
+    if (peso > massimo) { massimo = peso; dimensione = chiave; }
+  });
+  return dimensione;
+}
+
+function eTitolo(riga, dimensioneCorpo) {
+  const testo = riga.testo.trim();
+  if (!testo || testo.length > 120) return false;
+  if (eNumeroPaginaIsolato(testo)) return false;
+
+  const piuGrande = dimensioneCorpo > 0 && riga.dimensione >= dimensioneCorpo * 1.12;
+  const breve = testo.length <= 70;
+  const senzaPuntoFinale = !/[.,;:]$/.test(testo);
+  const numerazioneEsplicita = /^(capitolo|capo|parte|sezione|libro|appendice)\b/i.test(testo) ||
+    /^\d+(\.\d+)*\s+\p{Lu}/u.test(testo);
+
+  if (numerazioneEsplicita && breve) return true;
+  if (piuGrande && breve && senzaPuntoFinale) return true;
+  return false;
+}
+
+/* =========================================================
+   FASE 3 — RICOSTRUZIONE DEI BLOCCHI (riformattazione)
+
+   Raggruppa le righe in blocchi tipizzati (titolo o paragrafo). Un
+   paragrafo si interrompe quando: inizia un titolo, la riga
+   successiva è rientrata rispetto al margine dominante, il salto
+   verticale fra due righe supera l'interlinea abituale, oppure la
+   riga termina un periodo ed è visibilmente più corta della media.
+
+   Il rientro e il salto verticale sono indizi più affidabili della
+   sola punteggiatura, e non erano disponibili prima della modifica
+   alla fase 1.
+   ========================================================= */
+
+function ricostruisciBlocchiPagina(righe, dimensioneCorpo, opzioni) {
+  const blocchi = [];
+  if (!righe.length) return blocchi;
+
+  const xMinime = righe.map((r) => r.x).sort((a, b) => a - b);
+  const xMargine = xMinime[Math.floor(xMinime.length / 2)] || 0;
+  const lunghezze = righe.map((r) => r.testo.length).filter((l) => l > 0);
+  const lunghezzaMedia = lunghezze.reduce((a, b) => a + b, 0) / (lunghezze.length || 1);
+
+  let correnti = [];
+  const chiudiParagrafo = () => {
+    if (!correnti.length) return;
+    blocchi.push({ tipo: "paragrafo", testo: correnti.join(" ").replace(/\s+/g, " ").trim() });
+    correnti = [];
+  };
+
+  for (let i = 0; i < righe.length; i++) {
+    const riga = righe[i];
+    const testo = riga.testo.trim();
+    if (!testo) continue;
+
+    if (opzioni.riconosciTitoli && eTitolo(riga, dimensioneCorpo)) {
+      chiudiParagrafo();
+      blocchi.push({ tipo: "titolo", testo, dimensione: riga.dimensione });
+      continue;
+    }
+
+    correnti.push(testo);
+
+    if (!opzioni.ricostruisciParagrafi) { chiudiParagrafo(); continue; }
+
+    const prossima = righe[i + 1];
+    if (!prossima) break;
+
+    const prossimaERientrata = prossima.x > xMargine + 6;
+    const saltoVerticale = Math.abs(riga.y - prossima.y);
+    const interlineaAbituale = dimensioneCorpo > 0 ? dimensioneCorpo * 1.6 : 0;
+    const saltoAmpio = interlineaAbituale > 0 && saltoVerticale > interlineaAbituale;
+    const terminaPeriodo = /[.!?»"]\s*$/.test(testo);
+    const rigaCorta = testo.length < lunghezzaMedia * 0.7;
+    const prossimaETitolo = opzioni.riconosciTitoli && eTitolo(prossima, dimensioneCorpo);
+
+    if (prossimaETitolo || prossimaERientrata || saltoAmpio || (terminaPeriodo && rigaCorta)) {
+      chiudiParagrafo();
+    }
+  }
+  chiudiParagrafo();
+  return blocchi;
+}
+
+async function analizzaPDF(arrayBuffer, opzioniImport) {
+  if (!window.pdfjsLib) {
+    throw new Error("Libreria pdf.js non disponibile (verificare la connessione al primo avvio).");
+  }
+  pdfjsLib.GlobalWorkerOptions.workerSrc = URL_WORKER_PDFJS;
+
+  const opzioni = Object.assign({
+    rimuoviIntestazioni: true,
+    unisciSillabazioni: true,
+    riconosciTitoli: true,
+    ricostruisciParagrafi: true,
+  }, opzioniImport || {});
+
+  const documentoPdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  const numeroPagine = documentoPdf.numPages;
+
+  const frasi = [];
+  const metaFrasi = [];   // {tipo, paragrafo, pagina} per ogni frase
+  const indiceFrasePerPagina = [];
+
+  // --- Fase 1: estrazione grezza ---
+  const righeStrutturate = await estraiRighePDF(documentoPdf, numeroPagine);
+  const dimensioneCorpo = dimensioneDominante(righeStrutturate);
+
+  // --- Fase 2a: rimozione elementi di impaginazione (disattivabile) ---
+  let righePerPagina = righeStrutturate.map((righe) => righe.map((r) => r.testo));
+  let statistichePulizia = { righeRimosse: 0, impronteRicorrenti: 0 };
+
+  let righeStrutturatePulite = righeStrutturate;
+  if (opzioni.rimuoviIntestazioni) {
+    const esito = rimuoviElementiImpaginazione(righePerPagina);
+    statistichePulizia = { righeRimosse: esito.righeRimosse, impronteRicorrenti: esito.impronteRicorrenti };
+    const testiTenuti = esito.righePerPagina.map((righe) => new Set(righe));
+    righeStrutturatePulite = righeStrutturate.map((righe, p) =>
+      righe.filter((r) => testiTenuti[p].has(r.testo))
+    );
+    righePerPagina = esito.righePerPagina;
+  }
+
+  // --- Fasi 2b e 3: sillabazioni, titoli, paragrafi, segmentazione ---
+  let contatoreParagrafi = 0;
+  righeStrutturatePulite.forEach((righePagina, indicePagina) => {
+    indiceFrasePerPagina.push(frasi.length);
+
+    let righeLavorate = righePagina;
+    if (opzioni.unisciSillabazioni) {
+      // La fusione avviene direttamente sulle righe strutturate: operare
+      // sui soli testi e riallineare i metadati per posizione li
+      // sfalserebbe dopo la prima fusione, perché il numero di righe
+      // cambia. La riga risultante eredita i dati tipografici della
+      // prima delle due, che è quella su cui il paragrafo è allineato.
+      const unite = [];
+      for (let i = 0; i < righePagina.length; i++) {
+        const riga = righePagina[i];
+        const prossima = righePagina[i + 1];
+        if (
+          prossima &&
+          /\p{L}\s*[-\u00AD_]\s*$/u.test(riga.testo) &&
+          /^\s*\p{Ll}/u.test(prossima.testo)
+        ) {
+          unite.push({
+            testo: riga.testo.replace(/\s*[-\u00AD_]\s*$/u, "") + prossima.testo.replace(/^\s+/u, ""),
+            dimensione: riga.dimensione,
+            x: riga.x,
+            y: riga.y,
+          });
+          i += 1; // la riga successiva è stata assorbita
+        } else {
+          unite.push(riga);
+        }
+      }
+      righeLavorate = unite;
+    }
+
+    const blocchi = ricostruisciBlocchiPagina(righeLavorate, dimensioneCorpo, opzioni);
+    blocchi.forEach((blocco) => {
+      if (!blocco.testo.trim()) return;
+      contatoreParagrafi += 1;
+      const frasiBlocco = blocco.tipo === "titolo" ? [blocco.testo] : dividiInFrasi(blocco.testo);
+      frasiBlocco.forEach((frase) => {
+        frasi.push(frase);
+        metaFrasi.push({
+          tipo: blocco.tipo,
+          paragrafo: contatoreParagrafi,
+          pagina: indicePagina + 1,
+        });
+      });
+    });
+  });
+
+  let capitoli = [];
+  try {
+    const outlineGrezzo = await documentoPdf.getOutline();
+    if (outlineGrezzo && outlineGrezzo.length) {
+      const vociAppiattite = appiattisciOutlinePDF(outlineGrezzo);
+      for (const voce of vociAppiattite) {
+        try {
+          let destinazione = voce.dest;
+          if (typeof destinazione === "string") {
+            destinazione = await documentoPdf.getDestination(destinazione);
+          }
+          if (destinazione && destinazione[0]) {
+            const indicePagina = await documentoPdf.getPageIndex(destinazione[0]);
+            capitoli.push({
+              titolo: voce.title ? voce.title.trim() : "Senza titolo",
+              indiceFrase: indiceFrasePerPagina[indicePagina] ?? 0,
+            });
+          }
+        } catch (erroreVoce) {
+          // Voce di indice non risolvibile: la saltiamo senza bloccare l'import
+        }
+      }
+    }
+  } catch (erroreOutline) {
+    // PDF senza indice strutturato: procediamo con un solo capitolo
+  }
+
+  // Rimuove duplicati sullo stesso indiceFrase e ordina
+  const capitoliUnici = [];
+  const indiciVisti = new Set();
+  capitoli
+    .sort((a, b) => a.indiceFrase - b.indiceFrase)
+    .forEach((c) => {
+      if (!indiciVisti.has(c.indiceFrase)) {
+        indiciVisti.add(c.indiceFrase);
+        capitoliUnici.push(c);
+      }
+    });
+
+  let capitoliRicostruiti = false;
+  let fonteIndice = capitoliUnici.length ? "outline" : null;
+
+  if (capitoliUnici.length === 0) {
+    // Seconda via: sommario stampato nelle prime pagine.
+    const ricostruiti = ricostruisciCapitoliDaTesto(righePerPagina, frasi, indiceFrasePerPagina, numeroPagine);
+    if (ricostruiti && ricostruiti.length >= 2) {
+      capitoliUnici.push(...ricostruiti);
+      capitoliRicostruiti = true;
+      fonteIndice = "sommario";
+    }
+  }
+
+  if (capitoliUnici.length === 0) {
+    // Terza via, nuova: i titoli riconosciuti tipograficamente nel corpo
+    // del testo. Meno preciso di un outline, ma su documenti privi sia
+    // di indice strutturato sia di sommario stampato è l'unico appiglio.
+    const daTitoli = [];
+    metaFrasi.forEach((meta, indice) => {
+      if (meta.tipo !== "titolo") return;
+      const titolo = frasi[indice].trim();
+      if (titolo.length < 2 || titolo.length > 100) return;
+      daTitoli.push({ titolo, indiceFrase: indice });
+    });
+    if (daTitoli.length >= 2) {
+      capitoliUnici.push(...daTitoli);
+      capitoliRicostruiti = true;
+      fonteIndice = "titoli";
+    }
+  }
+
+  if (capitoliUnici.length === 0) {
+    capitoliUnici.push({ titolo: "Documento", indiceFrase: 0 });
+  }
+
+  let titolo = null, autore = null;
+  try {
+    const metadati = await documentoPdf.getMetadata();
+    titolo = (metadati.info && metadati.info.Title) || null;
+    autore = (metadati.info && metadati.info.Author) || null;
+  } catch (e) { /* metadati assenti: non bloccante */ }
+
+  // Copertina: si compone una miniatura della prima pagina. La
+  // larghezza è contenuta di proposito, perché l'immagine viene
+  // conservata nel database e serve solo per la griglia della libreria.
+  let copertina = null;
+  try {
+    const primaPagina = await documentoPdf.getPage(1);
+    const scalaBase = primaPagina.getViewport({ scale: 1 });
+    const scala = Math.min(1.5, 320 / scalaBase.width);
+    const viewport = primaPagina.getViewport({ scale: scala });
+    const tela = document.createElement("canvas");
+    tela.width = Math.round(viewport.width);
+    tela.height = Math.round(viewport.height);
+    await primaPagina.render({ canvasContext: tela.getContext("2d"), viewport }).promise;
+    copertina = tela.toDataURL("image/jpeg", 0.72);
+  } catch (e) { /* rendering non riuscito: non bloccante */ }
+
+  return {
+    frasi,
+    metaFrasi,
+    copertina,
+    capitoli: capitoliUnici,
+    numeroPagine,
+    titolo,
+    autore,
+    capitoliRicostruiti,
+    fonteIndice,
+    opzioniImport: opzioni,
+    pulizia: {
+      righeRimosse: statistichePulizia.righeRimosse,
+      impronteRicorrenti: statistichePulizia.impronteRicorrenti,
+      titoliRiconosciuti: metaFrasi.filter((m) => m.tipo === "titolo").length,
+      dimensioneCorpo,
+    },
+  };
+}
+
+/* =========================================================
+   Ricostruzione capitoli da sommario stampato (fallback quando
+   il PDF non ha un indice/outline strutturato).
+
+   Confidenza media: individua righe del tipo "Titolo .... 23"
+   nelle prime pagine, poi cerca ciascun titolo nel corpo del
+   documento per calibrare l'eventuale scarto tra numerazione
+   stampata e numero di pagina reale del PDF (es. per la presenza
+   di pagine introduttive non numerate). Se non riesce a calibrare
+   con sicurezza, rinuncia e il chiamante ricade sul capitolo unico.
+   ========================================================= */
+
+const REGEX_VOCE_SOMMARIO = /^(.{3,90}?)[\s.\u00B7\u2022\-]{3,}\s*(\d{1,4})\s*$/;
+const MASSIMO_VOCI_SOMMARIO = 60;
+const MASSIMO_PAGINE_RICERCA_INDICE = 25;
+
+function normalizzaConfrontoTesto(testo) {
+  return (testo || "")
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function individuaVociSommario(righePerPagina, numeroPagine) {
+  const paginaMassima = Math.min(numeroPagine, MASSIMO_PAGINE_RICERCA_INDICE);
+  const paginePossibili = [];
+  for (let p = 0; p < paginaMassima; p++) {
+    const righe = righePerPagina[p] || [];
+    const voci = [];
+    righe.forEach((riga) => {
+      const corrispondenza = riga.match(REGEX_VOCE_SOMMARIO);
+      if (corrispondenza) {
+        const titolo = corrispondenza[1].replace(/[.\s\u00B7\u2022\-]+$/, "").trim();
+        const numero = parseInt(corrispondenza[2], 10);
+        if (titolo.length >= 3 && !/^\d+$/.test(titolo)) {
+          voci.push({ titolo, numeroStampato: numero });
+        }
+      }
+    });
+    if (voci.length >= 3) paginePossibili.push({ pagina: p, voci });
+  }
+  return paginePossibili;
+}
+
+function ricostruisciCapitoliDaTesto(righePerPagina, frasi, indiceFrasePerPagina, numeroPagine) {
+  const paginePossibili = individuaVociSommario(righePerPagina, numeroPagine);
+  if (!paginePossibili.length) return null;
+
+  const paginaIndiceMassima = Math.max(...paginePossibili.map((p) => p.pagina));
+  let tutteVoci = [];
+  paginePossibili.forEach((p) => tutteVoci.push(...p.voci));
+  if (tutteVoci.length < 3) return null;
+  tutteVoci = tutteVoci.slice(0, MASSIMO_VOCI_SOMMARIO);
+
+  let offsetPagine = null;
+  const risolti = [];
+
+  for (const voce of tutteVoci) {
+    let indicePaginaTrovata = null;
+    const titoloNormalizzato = normalizzaConfrontoTesto(voce.titolo);
+
+    for (let p = paginaIndiceMassima + 1; p < numeroPagine; p++) {
+      const righe = righePerPagina[p] || [];
+      const corrisponde = righe.some((r) => {
+        const rNormalizzata = normalizzaConfrontoTesto(r);
+        return rNormalizzata.includes(titoloNormalizzato) && r.trim().length < voce.titolo.length + 25;
+      });
+      if (corrisponde) { indicePaginaTrovata = p; break; }
+    }
+
+    if (indicePaginaTrovata !== null) {
+      if (offsetPagine === null) offsetPagine = indicePaginaTrovata - voce.numeroStampato;
+      const inizioFrase = indiceFrasePerPagina[indicePaginaTrovata];
+      const fineFrase = indicePaginaTrovata + 1 < indiceFrasePerPagina.length
+        ? indiceFrasePerPagina[indicePaginaTrovata + 1] : frasi.length;
+      let indiceFraseRaffinato = inizioFrase;
+      const inizioTitolo = titoloNormalizzato.slice(0, 20);
+      for (let i = inizioFrase; i < fineFrase; i++) {
+        if (normalizzaConfrontoTesto(frasi[i]).includes(inizioTitolo)) {
+          indiceFraseRaffinato = i;
+          break;
+        }
+      }
+      risolti.push({ titolo: voce.titolo, indiceFrase: indiceFraseRaffinato, fonte: "testo" });
+    } else {
+      risolti.push({ titolo: voce.titolo, numeroStampato: voce.numeroStampato, fonte: "stimato" });
+    }
+  }
+
+  if (offsetPagine === null) return null; // impossibile calibrare: rinuncia
+
+  const capitoliFinali = risolti.map((v) => {
+    if (v.fonte === "testo") return { titolo: v.titolo, indiceFrase: v.indiceFrase };
+    const paginaStimata = Math.min(Math.max(0, v.numeroStampato + offsetPagine), numeroPagine - 1);
+    return { titolo: v.titolo, indiceFrase: indiceFrasePerPagina[paginaStimata] ?? 0 };
+  });
+
+  const visti = new Set();
+  const unici = [];
+  capitoliFinali
+    .sort((a, b) => a.indiceFrase - b.indiceFrase)
+    .forEach((c) => {
+      if (!visti.has(c.indiceFrase)) { visti.add(c.indiceFrase); unici.push(c); }
+    });
+
+  return unici.length >= 2 ? unici : null;
+}
+
+
+/* ===== js/parser-epub.js ===== */
+/* =========================================================
+   parser-epub.js — estrazione frasi e capitoli da file .epub
+   tramite epub.js (libreria caricata da CDN in index.html).
+
+   Nota di affidabilità (media confidenza, da verificare con file
+   reali): epub.js espone book.navigation.toc con coppie
+   {label, href} e book.spine.items con l'ordine di lettura reale.
+   La mappatura capitolo -> frase iniziale si basa sul confronto
+   tra l'href del sommario e l'href della sezione nello spine,
+   normalizzati togliendo l'ancora (#...). In alcuni EPUB gli href
+   del sommario puntano a un'ancora interna a metà sezione: in tal
+   caso il capitolo viene comunque agganciato all'inizio dell'intera
+   sezione (approssimazione accettabile per l'uso di lettura/ascolto
+   sequenziale), non alla frase esatta dell'ancora.
+   ========================================================= */
+
+function normalizzaHrefEpub(href) {
+  return (href || "").split("#")[0].replace(/^\.?\//, "");
+}
+
+function appiattisciTocEpub(voci, risultato = []) {
+  for (const voce of voci) {
+    risultato.push({ label: voce.label ? voce.label.trim() : "Senza titolo", href: voce.href });
+    if (voce.subitems && voce.subitems.length) {
+      appiattisciTocEpub(voce.subitems, risultato);
+    }
+  }
+  return risultato;
+}
+
+async function analizzaEPUB(arrayBuffer) {
+  if (!window.ePub) {
+    throw new Error("Libreria epub.js non disponibile (verificare la connessione al primo avvio).");
+  }
+
+  const libro = ePub(arrayBuffer);
+  await libro.ready;
+
+  const frasi = [];
+  const metaFrasi = [];
+  let contatoreParagrafi = 0;
+  const mappaHrefIndiceFrase = {};
+
+  const vociSpine = (libro.spine && libro.spine.items) || [];
+  for (const voceSpine of vociSpine) {
+    try {
+      const sezione = libro.spine.get(voceSpine.href);
+      if (!sezione) continue;
+      const documento = await sezione.load(libro.load.bind(libro));
+      const hrefNormalizzato = normalizzaHrefEpub(voceSpine.href);
+      if (!(hrefNormalizzato in mappaHrefIndiceFrase)) {
+        mappaHrefIndiceFrase[hrefNormalizzato] = frasi.length;
+      }
+
+      // A differenza del PDF, l'EPUB è HTML strutturato: i paragrafi
+      // sono marcati esplicitamente, quindi non serve ricostruirli per
+      // via euristica. Si leggono direttamente i blocchi di testo,
+      // scartando prima gli elementi non destinati alla lettura.
+      if (documento && documento.body) {
+        documento.body.querySelectorAll("script, style, sup.noteref, .footnote, .note").forEach((n) => n.remove());
+      }
+      const selettoreBlocchi = "p, h1, h2, h3, h4, h5, h6, li, blockquote, dd";
+      const tuttiBlocchi = documento && documento.body
+        ? Array.from(documento.body.querySelectorAll(selettoreBlocchi))
+        : [];
+
+      // Un blockquote o un li che contiene <p> viene selezionato
+      // insieme ai propri figli: senza questo filtro lo stesso testo
+      // verrebbe accodato due volte e quindi letto due volte. Si
+      // tengono solo i blocchi che non ne contengono altri.
+      const blocchi = tuttiBlocchi.filter((blocco) => !blocco.querySelector(selettoreBlocchi));
+
+      if (blocchi.length) {
+        blocchi.forEach((blocco) => {
+          const testoBlocco = normalizzaTipografia(blocco.textContent || "");
+          if (!testoBlocco.trim()) return;
+          // Nell'EPUB il tipo di blocco è dichiarato dal formato stesso:
+          // non serve dedurlo da indizi tipografici come nel PDF.
+          const eIntestazione = /^H[1-6]$/i.test(blocco.tagName || "");
+          contatoreParagrafi += 1;
+          const frasiBlocco = eIntestazione ? [testoBlocco.trim()] : dividiInFrasi(testoBlocco);
+          frasiBlocco.forEach((frase) => {
+            frasi.push(frase);
+            metaFrasi.push({
+              tipo: eIntestazione ? "titolo" : "paragrafo",
+              paragrafo: contatoreParagrafi,
+              pagina: null,
+            });
+          });
+        });
+      } else {
+        // Sezione priva di marcatura a blocchi: si ricade sul testo grezzo
+        const testoSezione = normalizzaTipografia((documento && documento.body ? documento.body.textContent : "") || "");
+        if (testoSezione.trim()) {
+          contatoreParagrafi += 1;
+          dividiInFrasi(testoSezione).forEach((frase) => {
+            frasi.push(frase);
+            metaFrasi.push({ tipo: "paragrafo", paragrafo: contatoreParagrafi, pagina: null });
+          });
+        }
+      }
+      if (typeof sezione.unload === "function") sezione.unload();
+    } catch (erroreSezione) {
+      // Sezione non caricabile (es. risorsa non testuale): la saltiamo
+      console.warn("epub: sezione non caricabile", voceSpine.href, erroreSezione);
+    }
+  }
+
+  let capitoli = [];
+  try {
+    const navigazione = await libro.loaded.navigation;
+    const vociToc = appiattisciTocEpub((navigazione && navigazione.toc) || []);
+    capitoli = vociToc
+      .map((voce) => {
+        const hrefNormalizzato = normalizzaHrefEpub(voce.href);
+        const indiceFrase = mappaHrefIndiceFrase[hrefNormalizzato];
+        return indiceFrase !== undefined ? { titolo: voce.label, indiceFrase } : null;
+      })
+      .filter(Boolean);
+  } catch (erroreToc) {
+    // Sommario assente o non leggibile
+  }
+
+  const indiciVisti = new Set();
+  const capitoliUnici = [];
+  capitoli
+    .sort((a, b) => a.indiceFrase - b.indiceFrase)
+    .forEach((c) => {
+      if (!indiciVisti.has(c.indiceFrase)) {
+        indiciVisti.add(c.indiceFrase);
+        capitoliUnici.push(c);
+      }
+    });
+
+  if (capitoliUnici.length === 0) {
+    capitoliUnici.push({ titolo: "Libro", indiceFrase: 0 });
+  }
+
+  let titolo = null, autore = null;
+  try {
+    const metadati = await libro.loaded.metadata;
+    titolo = metadati.title || null;
+    autore = metadati.creator || null;
+  } catch (e) { /* metadati assenti: non bloccante */ }
+
+  try { libro.destroy(); } catch (e) { /* non bloccante */ }
+
+  // Copertina: epub.js espone coverUrl(), che restituisce un blob URL.
+  // Lo si converte in data URL perché il blob URL decade alla chiusura
+  // della pagina, mentre la copertina deve sopravvivere nel database.
+  let copertina = null;
+  try {
+    const urlCopertina = await libro.coverUrl();
+    if (urlCopertina) {
+      const risposta = await fetch(urlCopertina);
+      const blob = await risposta.blob();
+      copertina = await new Promise((risolvi) => {
+        const lettore = new FileReader();
+        lettore.onload = () => risolvi(lettore.result);
+        lettore.onerror = () => risolvi(null);
+        lettore.readAsDataURL(blob);
+      });
+      URL.revokeObjectURL(urlCopertina);
+    }
+  } catch (e) { /* copertina assente o non estraibile: non bloccante */ }
+
+  return { frasi, metaFrasi, capitoli: capitoliUnici, titolo, autore, copertina, fonteIndice: capitoliUnici.length ? "toc" : null };
+}
+
+
+/* ===== js/parser-mobi.js ===== */
+/* =========================================================
+   parser-mobi.js — estrazione da MOBI e AZW3 (KF8) senza DRM
+
+   Si appoggia al modulo mobi.js della libreria foliate-js, che è
+   l'unica implementazione JavaScript matura in grado di leggere
+   entrambi i formati direttamente da un oggetto File o Blob, senza
+   dipendenze obbligatorie e senza caricare l'intero file in memoria.
+
+   CONFIDENZA DICHIARATA: media. Il modulo è ESM e viene caricato per
+   import dinamico da CDN; l'autore stesso avverte che l'API della
+   libreria non è stabile. Inoltre l'estrazione su file KF8 può essere
+   lenta, perché la decompressione HUFF/CDIC è onerosa. Per questi
+   motivi il formato è offerto con un messaggio di errore esplicito
+   anziché con un fallimento silenzioso.
+
+   LIMITE INVALICABILE: i file protetti da DRM non sono leggibili. Non
+   è una carenza della libreria: il contenuto è cifrato e la chiave non
+   è nel file. Gli acquisti Kindle vanno quindi letti nell'applicazione
+   di Amazon, oppure importati qui solo se privi di protezione.
+   ========================================================= */
+
+const URL_MODULO_MOBI = "https://esm.sh/foliate-js@1.0.4/mobi.js";
+
+async function analizzaMOBI(file) {
+  let modulo;
+  try {
+    modulo = await import(/* @vite-ignore */ URL_MODULO_MOBI);
+  } catch (errore) {
+    throw new Error(
+      "Non è stato possibile caricare il modulo per i formati Kindle. Serve una connessione di rete al primo utilizzo."
+    );
+  }
+
+  const CostruttoreMOBI = modulo.MOBI || modulo.default;
+  if (!CostruttoreMOBI) {
+    throw new Error("Il modulo per i formati Kindle non espone l'interfaccia attesa.");
+  }
+
+  let libro;
+  try {
+    // unzlib serve solo per i font compressi dei file KF8, non per il
+    // testo: si fornisce una funzione inerte, poiché i font non ci
+    // interessano e non devono bloccare l'estrazione.
+    libro = await new CostruttoreMOBI({ unzlib: () => new Uint8Array() }).open(file);
+  } catch (errore) {
+    const messaggio = String(errore && errore.message ? errore.message : errore);
+    if (/drm|encrypt/i.test(messaggio)) {
+      throw new Error("Il file è protetto da DRM e non può essere letto.");
+    }
+    throw new Error(`File non riconosciuto come MOBI o AZW3 valido (${messaggio}).`);
+  }
+
+  const frasi = [];
+  const metaFrasi = [];
+  const capitoli = [];
+  let contatoreParagrafi = 0;
+
+  const sezioni = libro.sections || [];
+  const selettoreBlocchi = "p, h1, h2, h3, h4, h5, h6, li, blockquote, dd";
+
+  for (const sezione of sezioni) {
+    try {
+      const sorgente = await sezione.createDocument();
+      const documento = sorgente && sorgente.body ? sorgente : null;
+      if (!documento) continue;
+
+      documento.body.querySelectorAll("script, style, .footnote, .note").forEach((n) => n.remove());
+
+      // Stesso filtro applicato all'EPUB: senza di esso un blockquote
+      // contenente paragrafi verrebbe accodato insieme ai propri figli
+      // e quindi letto due volte.
+      const tutti = Array.from(documento.body.querySelectorAll(selettoreBlocchi));
+      const blocchi = tutti.filter((b) => !b.querySelector(selettoreBlocchi));
+
+      const daLeggere = blocchi.length
+        ? blocchi
+        : (documento.body.textContent || "").trim() ? [documento.body] : [];
+
+      daLeggere.forEach((blocco) => {
+        const testo = normalizzaTipografia(blocco.textContent || "");
+        if (!testo.trim()) return;
+        const eIntestazione = /^H[1-6]$/i.test(blocco.tagName || "");
+        contatoreParagrafi += 1;
+        if (eIntestazione) capitoli.push({ titolo: testo.trim(), indiceFrase: frasi.length });
+        const frasiBlocco = eIntestazione ? [testo.trim()] : dividiInFrasi(testo);
+        frasiBlocco.forEach((frase) => {
+          frasi.push(frase);
+          metaFrasi.push({
+            tipo: eIntestazione ? "titolo" : "paragrafo",
+            paragrafo: contatoreParagrafi,
+            pagina: null,
+          });
+        });
+      });
+    } catch (erroreSezione) {
+      // Una sezione illeggibile non deve impedire l'importazione del
+      // resto del libro: si prosegue con le successive.
+      continue;
+    }
+  }
+
+  if (!frasi.length) {
+    throw new Error("Nessun testo estratto: il file potrebbe essere protetto da DRM o danneggiato.");
+  }
+
+  let titolo = null;
+  let autore = null;
+  try {
+    const metadati = libro.metadata || {};
+    titolo = metadati.title || null;
+    const creatore = metadati.author || metadati.creator;
+    autore = Array.isArray(creatore)
+      ? creatore.map((c) => (typeof c === "string" ? c : c.name)).join(", ")
+      : (typeof creatore === "string" ? creatore : (creatore && creatore.name) || null);
+  } catch (e) { /* metadati assenti: non bloccante */ }
+
+  if (!capitoli.length) capitoli.push({ titolo: "Inizio", indiceFrase: 0 });
+
+  return {
+    frasi,
+    metaFrasi,
+    capitoli,
+    titolo,
+    autore,
+    fonteIndice: capitoli.length > 1 ? "titoli" : null,
+  };
+}
+
+
+/* ===== js/tts-neurale.js ===== */
+/* =========================================================
+   tts-neurale.js — motori di sintesi neurale (Piper)
+
+   A differenza della Web Speech API, che pronuncia direttamente, i
+   motori neurali restituiscono un file audio che l'applicazione deve
+   poi riprodurre. Il controller distingue quindi due tipi di motore:
+   "nativo" (parla da sé) e "audio" (produce un blob da riprodurre).
+
+   REQUISITI, verificati prima di offrire il motore:
+
+   - Contesto sicuro (HTTPS o localhost). La documentazione della
+     File System Standard è esplicita: navigator.storage.getDirectory()
+     è disponibile unicamente in contesto sicuro. Piper vi conserva i
+     modelli scaricati, quindi senza OPFS non ha dove metterli.
+   - Web Worker. Le librerie Piper eseguono l'inferenza ONNX in un
+     worker; da file:// la creazione di worker è soggetta a
+     restrizioni di origine.
+   - WebAssembly e import dinamico di moduli ESM da CDN.
+
+   Su un file locale aperto con file:// almeno il primo requisito non
+   è soddisfatto. Non si tratta di un limite dell'implementazione ma
+   della piattaforma: la stessa applicazione servita via HTTPS
+   (GitHub Pages, o un server locale) soddisfa tutti i requisiti
+   senza modifiche al codice.
+   ========================================================= */
+
+const URL_MODULO_PIPER = "https://esm.sh/@mintplex-labs/piper-tts-web@1.0.5";
+
+/* Voci italiane pubblicate dal progetto Piper. La dimensione indicata
+   è quella del modello ONNX da scaricare al primo utilizzo; resta poi
+   memorizzato localmente e non viene più richiesto.
+   Confidenza sulla disponibilità dei singoli identificativi: media —
+   il catalogo dei modelli può cambiare, quindi l'elenco effettivo
+   viene richiesto alla libreria quando disponibile e questo serve da
+   ripiego. */
+const VOCI_PIPER_ITALIANE = [
+  { id: "it_IT-riccardo-x_low", nome: "Riccardo (molto leggera)", dimensione: "~20 MB" },
+  { id: "it_IT-paola-medium", nome: "Paola (media)", dimensione: "~63 MB" },
+];
+
+const MotoreNeurale = (() => {
+  let moduloPiper = null;
+  let vociDisponibili = null;
+  let voceCaricata = null;
+
+  /* ---------- Diagnostica dei requisiti ---------- */
+
+  async function verificaRequisiti() {
+    const esiti = [];
+
+    esiti.push({
+      nome: "Contesto sicuro (HTTPS)",
+      esito: !!window.isSecureContext,
+      nota: window.isSecureContext
+        ? `Origine: ${location.origin || "non definita"}`
+        : "Richiesto per la memorizzazione dei modelli vocali.",
+    });
+
+    // OPFS: è il requisito che decide. Si tenta la chiamata reale
+    // invece di dedurne l'esito, perché il comportamento varia fra
+    // browser e modalità di navigazione.
+    let opfsDisponibile = false;
+    let notaOpfs = "API non esposta dal browser.";
+    if (navigator.storage && typeof navigator.storage.getDirectory === "function") {
+      try {
+        await navigator.storage.getDirectory();
+        opfsDisponibile = true;
+        notaOpfs = "Memorizzazione dei modelli disponibile.";
+      } catch (errore) {
+        notaOpfs = `Accesso negato: ${errore.name || errore}.`;
+      }
+    }
+    esiti.push({ nome: "Archivio modelli (OPFS)", esito: opfsDisponibile, nota: notaOpfs });
+
+    let workerDisponibile = false;
+    let notaWorker = "";
+    try {
+      const sorgente = URL.createObjectURL(new Blob(["self.close();"], { type: "text/javascript" }));
+      const worker = new Worker(sorgente);
+      worker.terminate();
+      URL.revokeObjectURL(sorgente);
+      workerDisponibile = true;
+      notaWorker = "Elaborazione in secondo piano disponibile.";
+    } catch (errore) {
+      notaWorker = `Creazione non riuscita: ${errore.name || errore}.`;
+    }
+    esiti.push({ nome: "Web Worker", esito: workerDisponibile, nota: notaWorker });
+
+    esiti.push({
+      nome: "WebAssembly",
+      esito: typeof WebAssembly === "object",
+      nota: typeof WebAssembly === "object" ? "Supportato." : "Non supportato.",
+    });
+
+    let reteDisponibile = false;
+    let notaRete = "";
+    try {
+      await fetch("https://esm.sh/", { method: "HEAD", mode: "no-cors" });
+      reteDisponibile = true;
+      notaRete = "Raggiungibile.";
+    } catch (errore) {
+      notaRete = "Non raggiungibile: serve connessione al primo scaricamento.";
+    }
+    esiti.push({ nome: "Accesso alla rete", esito: reteDisponibile, nota: notaRete });
+
+    const utilizzabile = esiti.every((e) => e.esito);
+    return { esiti, utilizzabile };
+  }
+
+  /* ---------- Caricamento della libreria ---------- */
+
+  async function caricaModulo() {
+    if (moduloPiper) return moduloPiper;
+    // L'import dinamico è l'unico modo per caricare un modulo ESM da
+    // un file HTML autonomo senza passaggio di build.
+    moduloPiper = await import(/* @vite-ignore */ URL_MODULO_PIPER);
+    return moduloPiper;
+  }
+
+  async function elencaVoci() {
+    if (vociDisponibili) return vociDisponibili;
+    try {
+      const modulo = await caricaModulo();
+      if (typeof modulo.voices === "function") {
+        const tutte = await modulo.voices();
+        const italiane = tutte
+          .filter((v) => (v.language && (v.language.code || "").startsWith("it")) || (v.key || "").startsWith("it_IT"))
+          .map((v) => ({
+            id: v.key || v.id,
+            nome: `${v.name || v.key} (${v.quality || "?"})`,
+            dimensione: v.files ? "variabile" : "",
+          }));
+        vociDisponibili = italiane.length ? italiane : VOCI_PIPER_ITALIANE;
+      } else {
+        vociDisponibili = VOCI_PIPER_ITALIANE;
+      }
+    } catch (errore) {
+      vociDisponibili = VOCI_PIPER_ITALIANE;
+    }
+    return vociDisponibili;
+  }
+
+  async function elencaScaricate() {
+    try {
+      const modulo = await caricaModulo();
+      if (typeof modulo.stored === "function") return await modulo.stored();
+    } catch (errore) { /* nessun modello memorizzato o libreria assente */ }
+    return [];
+  }
+
+  async function scaricaVoce(idVoce, alProgresso) {
+    const modulo = await caricaModulo();
+    if (typeof modulo.download !== "function") {
+      throw new Error("La libreria non espone una funzione di scaricamento.");
+    }
+    await modulo.download(idVoce, (progresso) => {
+      if (!alProgresso) return;
+      const percentuale = progresso && progresso.total
+        ? Math.round((progresso.loaded / progresso.total) * 100)
+        : null;
+      alProgresso(percentuale);
+    });
+    voceCaricata = idVoce;
+  }
+
+  async function sintetizza(testo, idVoce) {
+    const modulo = await caricaModulo();
+    // predict restituisce un Blob WAV: la riproduzione è a carico del
+    // controller, che lo tratta come una qualsiasi sorgente audio.
+    return await modulo.predict({ text: testo, voiceId: idVoce });
+  }
+
+  return {
+    verificaRequisiti,
+    elencaVoci,
+    elencaScaricate,
+    scaricaVoce,
+    sintetizza,
+    vociPredefinite: VOCI_PIPER_ITALIANE,
+    voceCaricata: () => voceCaricata,
+  };
+})();
+
+
+/* ===== js/tts.js ===== */
+/* =========================================================
+   tts.js — controller di sintesi vocale (v2.0)
+
+   Riscritto adottando l'architettura validata dall'applicazione di
+   test minimale, che in un collaudo reale su un libro intero non ha
+   mai prodotto blocchi.
+
+   RIMOSSI deliberatamente rispetto alla versione precedente, in
+   quanto identificati come causa dei blocchi anziché rimedio:
+
+   - Keep-alive con pause()/resume() periodici. Su Chrome Android
+     pause() può lasciare il motore in uno stato da cui resume() non
+     lo risveglia, senza generare né 'end' né 'error': esattamente il
+     sintomo osservato nei registri diagnostici.
+   - Chiamate cancel() immediatamente seguite da speak() nel ciclo
+     normale di avanzamento. Restano solo per le interruzioni
+     volontarie dell'utente, sempre con un intervallo prima di
+     riprendere.
+
+   INTRODOTTI:
+
+   - Pre-accodamento: si consegnano al motore alcune unità in anticipo,
+     così che le concateni internamente senza attendere che JavaScript
+     reagisca all'evento 'end'. È quell'intervallo di reazione (100-300 ms
+     misurati) a produrre una pausa percepita come un punto fuori posto
+     a metà periodo.
+   - Suddivisione delle frasi lunghe rispettosa della punteggiatura
+     (vedi utils.js): ogni confine fra unità genera una pausa udibile,
+     quindi conviene che cada dove la punteggiatura già la prevede.
+   - Limite di lunghezza configurabile invece che fisso.
+
+   MANTENUTI: registro diagnostico, wake lock, ripristino al ritorno
+   in primo piano. Nessuno dei tre interferisce con il motore: il primo
+   osserva soltanto, il secondo agisce sullo schermo, il terzo entra in
+   funzione unicamente quando la riproduzione risulta già ferma.
+   ========================================================= */
+
+const REGISTRO_MOTORI = {
+  webspeech: {
+    id: "webspeech",
+    nome: "Sintesi di sistema (Google, se disponibile)",
+    tipo: "nativo",
+    ottieniVoci() {
+      return window.speechSynthesis ? window.speechSynthesis.getVoices() : [];
+    },
+  },
+  piper: {
+    id: "piper",
+    nome: "Piper (neurale, in locale)",
+    tipo: "audio",
+    ottieniVoci() {
+      // L'elenco effettivo si ottiene in modo asincrono; qui si
+      // restituisce il ripiego sincrono usato per popolare il menu
+      // prima che la libreria sia caricata.
+      return (typeof MotoreNeurale !== "undefined" ? MotoreNeurale.vociPredefinite : []).map((v) => ({
+        voiceURI: v.id,
+        name: `${v.nome} ${v.dimensione}`,
+        lang: "it-IT",
+      }));
+    },
+  },
+};
+
+const ControllerTTS = (() => {
+  const UNITA_IN_ANTICIPO = 2;
+  const RITARDO_DOPO_INTERRUZIONE_MS = 250;
+
+  let motoreCorrente = REGISTRO_MOTORI.webspeech;
+  let frasi = [];            // unità di testo effettivamente pronunciate
+  let indiceCorrente = 0;    // unità attualmente in riproduzione
+  let indiceAccodato = -1;   // ultima unità consegnata al motore
+  let velocita = 1.0;
+  let tono = 1.0;
+  let voceSelezionataURI = null;
+  let inRiproduzione = false;
+  let preAccodamentoAttivo = true;
+  let inizioUnitaTimestamp = 0;
+  let wakeLockSentinel = null;
+  let avvisoWakeLockMostrato = false;
+
+  let alCambioFrase = () => {};
+  let alTerminePlaylist = () => {};
+  let alCambioStato = () => {};
+  let alErrore = () => {};
+
+  // ---------- Registro diagnostico ----------
+
+  const REGISTRO_MASSIMO_VOCI = 300;
+  let registroEventi = [];
+
+  function registra(tipo, dettaglio) {
+    const ora = new Date();
+    const marca = ora.toTimeString().slice(0, 8) + "." + String(ora.getMilliseconds()).padStart(3, "0");
+    registroEventi.push(`${marca} [${tipo}] ${dettaglio}`);
+    if (registroEventi.length > REGISTRO_MASSIMO_VOCI) registroEventi.shift();
+  }
+
+  function ottieniRegistro() {
+    return registroEventi.join("\n");
+  }
+
+  function svuotaRegistro() {
+    registroEventi = [];
+    registra("REGISTRO", "svuotato manualmente");
+  }
+
+  // ---------- Configurazione ----------
+
+  function elencaMotori() {
+    return Object.values(REGISTRO_MOTORI);
+  }
+
+  function impostaMotore(idMotore) {
+    if (REGISTRO_MOTORI[idMotore]) motoreCorrente = REGISTRO_MOTORI[idMotore];
+  }
+
+  function elencaVoci() {
+    return motoreCorrente.ottieniVoci();
+  }
+
+  function impostaVoce(voceURI) {
+    voceSelezionataURI = voceURI;
+    registra("IMPOSTAZIONE", `voce impostata: ${voceURI}`);
+  }
+
+  function impostaVelocita(nuovaVelocita) {
+    velocita = Math.min(4, Math.max(0.5, Math.round(nuovaVelocita * 10) / 10));
+    // Sui motori audio la velocità agisce sulla riproduzione, quindi ha
+    // effetto immediato anche sull'unità già in corso; sulla Web Speech
+    // API si applica invece solo dalle unità accodate successivamente.
+    if (elementoAudio) elementoAudio.playbackRate = velocita;
+    registra("IMPOSTAZIONE", `velocità: ${velocita}`);
+  }
+
+  function impostaTono(nuovoTono) {
+    tono = Math.min(2, Math.max(0.5, Math.round(nuovoTono * 10) / 10));
+    registra("IMPOSTAZIONE", `tono: ${tono}`);
+  }
+
+  function impostaPreAccodamento(attivo) {
+    preAccodamentoAttivo = !!attivo;
+    registra("IMPOSTAZIONE", `pre-accodamento: ${preAccodamentoAttivo ? "attivo" : "disattivo"}`);
+  }
+
+  function impostaCallback({ onCambioFrase, onTerminePlaylist, onCambioStato, onErrore }) {
+    if (onCambioFrase) alCambioFrase = onCambioFrase;
+    if (onTerminePlaylist) alTerminePlaylist = onTerminePlaylist;
+    if (onCambioStato) alCambioStato = onCambioStato;
+    if (onErrore) alErrore = onErrore;
+  }
+
+  function impostaFrasi(nuoveFrasi, indicePartenza = 0) {
+    interrompi();
+    frasi = nuoveFrasi || [];
+    indiceCorrente = Math.min(Math.max(0, indicePartenza), Math.max(0, frasi.length - 1));
+    indiceAccodato = -1;
+  }
+
+  // ---------- Wake lock ----------
+
+  async function richiediWakeLock() {
+    try {
+      if ("wakeLock" in navigator) {
+        wakeLockSentinel = await navigator.wakeLock.request("screen");
+        registra("WAKELOCK", "acquisito");
+        wakeLockSentinel.addEventListener("release", () => registra("WAKELOCK", "rilasciato dal sistema"));
+      } else {
+        registra("WAKELOCK", "API non disponibile in questo browser");
+      }
+    } catch (errore) {
+      registra("WAKELOCK", `richiesta negata: ${errore.name}`);
+      if (!avvisoWakeLockMostrato) {
+        avvisoWakeLockMostrato = true;
+        alErrore("Lo schermo non può essere mantenuto acceso in questo contesto: per un ascolto prolungato, aumenta il tempo di blocco automatico nelle impostazioni del telefono.");
+      }
+    }
+  }
+
+  function rilasciaWakeLock() {
+    if (wakeLockSentinel) {
+      wakeLockSentinel.release().catch(() => {});
+      wakeLockSentinel = null;
+    }
+  }
+
+  if (typeof document !== "undefined") {
+    document.addEventListener("visibilitychange", () => {
+      registra(
+        "VISIBILITA",
+        `stato=${document.visibilityState}, speaking=${window.speechSynthesis && window.speechSynthesis.speaking}, inRiproduzione=${inRiproduzione}`
+      );
+      if (document.visibilityState !== "visible" || !inRiproduzione) return;
+      if (!wakeLockSentinel) richiediWakeLock();
+      // Ripristino al ritorno in primo piano: interviene unicamente se
+      // il motore risulta già fermo, quindi non può interferire con una
+      // riproduzione in corso.
+      if (window.speechSynthesis && !window.speechSynthesis.speaking) {
+        registra("RECUPERO", "riproduzione ferma al ritorno in primo piano, ripresa");
+        indiceAccodato = indiceCorrente - 1;
+        rifornisciCoda();
+      }
+    });
+  }
+
+  // ---------- Riproduzione ----------
+
+  function trovaVoce() {
+    const voci = elencaVoci();
+    if (!voci.length) return null;
+    if (voceSelezionataURI) {
+      const trovata = voci.find((v) => v.voiceURI === voceSelezionataURI);
+      if (trovata) return trovata;
+    }
+    return voci.find((v) => v.lang && v.lang.toLowerCase().startsWith("it")) || voci[0];
+  }
+
+  function provaVoce(testoProva) {
+    if (!window.speechSynthesis) return;
+    if (inRiproduzione) pausa();
+    window.speechSynthesis.cancel();
+    setTimeout(() => {
+      const enunciato = new SpeechSynthesisUtterance(testoProva);
+      enunciato.rate = velocita;
+      enunciato.pitch = tono;
+      const voce = trovaVoce();
+      if (voce) {
+        enunciato.voice = voce;
+        enunciato.lang = voce.lang;
+      }
+      window.speechSynthesis.speak(enunciato);
+    }, RITARDO_DOPO_INTERRUZIONE_MS);
+  }
+
+  function accodaUnita(indice) {
+    const testo = frasi[indice];
+    if (!testo) return;
+
+    const enunciato = new SpeechSynthesisUtterance(testo);
+    enunciato.rate = velocita;
+    enunciato.pitch = tono;
+    const voce = trovaVoce();
+    if (voce) {
+      enunciato.voice = voce;
+      enunciato.lang = voce.lang;
+    }
+
+    const istanteAccodamento = Date.now();
+    registra("ACCODA", `unità ${indice + 1}/${frasi.length} (${testo.length} car.)`);
+
+    enunciato.onstart = () => {
+      if (!inRiproduzione) return;
+      indiceCorrente = indice;
+      inizioUnitaTimestamp = Date.now();
+      // L'evidenziazione si aggiorna qui, sull'avvio effettivo del
+      // parlato, non sull'accodamento: resta così sincronizzata anche
+      // quando più unità sono già state consegnate al motore.
+      alCambioFrase(indice);
+      registra("START", `unità ${indice + 1}, attesa in coda ${Date.now() - istanteAccodamento}ms`);
+    };
+
+    enunciato.onend = () => {
+      if (!inRiproduzione) return;
+      registra("END", `unità ${indice + 1} in ${Date.now() - inizioUnitaTimestamp}ms`);
+      if (indice + 1 >= frasi.length && indiceAccodato >= frasi.length - 1) {
+        registra("FINE", "lettura completata");
+        inRiproduzione = false;
+        alCambioStato(false);
+        rilasciaWakeLock();
+        alTerminePlaylist();
+        return;
+      }
+      rifornisciCoda();
+    };
+
+    enunciato.onerror = (evento) => {
+      registra("ERRORE", `error="${evento.error}" su unità ${indice + 1}`);
+      // "interrupted" e "canceled" derivano da una nostra cancellazione
+      // volontaria (pausa, salto, nuovo libro): non sono guasti.
+      if (evento.error === "interrupted" || evento.error === "canceled") return;
+      if (!inRiproduzione) return;
+      inRiproduzione = false;
+      alCambioStato(false);
+      rilasciaWakeLock();
+      alErrore(`Il motore vocale ha segnalato un errore (${evento.error}). Premi Play per riprendere.`);
+    };
+
+    window.speechSynthesis.speak(enunciato);
+  }
+
+  function rifornisciCoda() {
+    if (!inRiproduzione) return;
+    const anticipo = preAccodamentoAttivo ? UNITA_IN_ANTICIPO : 0;
+    while (indiceAccodato + 1 < frasi.length && indiceAccodato < indiceCorrente + anticipo) {
+      indiceAccodato += 1;
+      accodaUnita(indiceAccodato);
+    }
+  }
+
+  /* ---------- Riproduzione per motori di tipo "audio" ----------
+
+     I motori neurali restituiscono un file audio invece di pronunciare
+     direttamente. La sintesi di un'unità richiede tempo, quindi si
+     genera l'unità successiva mentre la corrente è ancora in
+     riproduzione: senza questa sovrapposizione ogni confine fra unità
+     comporterebbe un silenzio pari al tempo di inferenza.
+
+     La velocità si applica tramite playbackRate dell'elemento audio.
+     Il tono non è regolabile: è una proprietà del modello vocale, non
+     un parametro di riproduzione. */
+
+  let elementoAudio = null;
+  let generazioneInCorso = null;
+
+  /* ---------- Equalizzazione (solo motori di tipo "audio") ----------
+
+     La catena è: elemento audio -> bassi -> medi -> alti ->
+     compressore facoltativo -> uscita.
+
+     Vincolo di piattaforma, non dell'implementazione: questa catena può
+     agire soltanto sui motori che producono un file audio. La Web Speech
+     API invia il parlato direttamente all'uscita del dispositivo senza
+     esporre né un MediaStream né un nodo intercettabile, quindi con il
+     motore di sistema non esiste alcun punto in cui inserire un filtro.
+
+     createMediaElementSource può essere invocato una sola volta per
+     ciascun elemento audio: la catena viene perciò costruita al primo
+     utilizzo e poi riutilizzata. */
+
+  let contestoAudio = null;
+  let sorgenteAudio = null;
+  let filtroBassi = null;
+  let filtroMedi = null;
+  let filtroAlti = null;
+  let compressore = null;
+  let equalizzatore = { bassi: 0, medi: 0, alti: 0, compressione: false };
+
+  function costruisciCatenaAudio() {
+    if (contestoAudio || !elementoAudio) return;
+    const Costruttore = window.AudioContext || window.webkitAudioContext;
+    if (!Costruttore) {
+      registra("EQUALIZZATORE", "Web Audio API non disponibile");
+      return;
+    }
+    try {
+      contestoAudio = new Costruttore();
+      sorgenteAudio = contestoAudio.createMediaElementSource(elementoAudio);
+
+      filtroBassi = contestoAudio.createBiquadFilter();
+      filtroBassi.type = "lowshelf";
+      filtroBassi.frequency.value = 250;
+
+      filtroMedi = contestoAudio.createBiquadFilter();
+      filtroMedi.type = "peaking";
+      filtroMedi.frequency.value = 1200; // regione in cui cade gran parte dell'intelligibilità del parlato
+      filtroMedi.Q.value = 0.9;
+
+      filtroAlti = contestoAudio.createBiquadFilter();
+      filtroAlti.type = "highshelf";
+      filtroAlti.frequency.value = 4000;
+
+      compressore = contestoAudio.createDynamicsCompressor();
+      compressore.threshold.value = -24;
+      compressore.ratio.value = 3;
+      compressore.attack.value = 0.01;
+      compressore.release.value = 0.25;
+
+      sorgenteAudio.connect(filtroBassi);
+      filtroBassi.connect(filtroMedi);
+      filtroMedi.connect(filtroAlti);
+      collegaUscita();
+      applicaEqualizzatore();
+      registra("EQUALIZZATORE", "catena audio costruita");
+    } catch (errore) {
+      registra("EQUALIZZATORE", `costruzione non riuscita: ${errore.message || errore}`);
+      contestoAudio = null;
+    }
+  }
+
+  function collegaUscita() {
+    if (!filtroAlti || !contestoAudio) return;
+    try { filtroAlti.disconnect(); } catch (e) { /* non ancora collegato */ }
+    try { compressore.disconnect(); } catch (e) { /* non ancora collegato */ }
+    if (equalizzatore.compressione) {
+      filtroAlti.connect(compressore);
+      compressore.connect(contestoAudio.destination);
+    } else {
+      filtroAlti.connect(contestoAudio.destination);
+    }
+  }
+
+  function applicaEqualizzatore() {
+    if (!filtroBassi) return;
+    filtroBassi.gain.value = equalizzatore.bassi;
+    filtroMedi.gain.value = equalizzatore.medi;
+    filtroAlti.gain.value = equalizzatore.alti;
+    collegaUscita();
+  }
+
+  function impostaEqualizzatore(nuoviValori) {
+    equalizzatore = Object.assign(equalizzatore, nuoviValori || {});
+    applicaEqualizzatore();
+    registra(
+      "EQUALIZZATORE",
+      `bassi ${equalizzatore.bassi} dB, medi ${equalizzatore.medi} dB, alti ${equalizzatore.alti} dB, compressione ${equalizzatore.compressione ? "attiva" : "disattiva"}`
+    );
+  }
+
+  function ottieniEqualizzatore() {
+    return Object.assign({}, equalizzatore);
+  }
+
+  function equalizzatoreDisponibile() {
+    return motoreCorrente.tipo === "audio";
+  }
+
+  function ottieniElementoAudio() {
+    if (!elementoAudio) {
+      elementoAudio = new Audio();
+      elementoAudio.preload = "auto";
+    }
+    return elementoAudio;
+  }
+
+  async function generaAudioUnita(indice) {
+    const testo = frasi[indice];
+    if (!testo) return null;
+    const blob = await MotoreNeurale.sintetizza(testo, voceSelezionataURI);
+    return URL.createObjectURL(blob);
+  }
+
+  async function riproduciSequenzaAudio(indice) {
+    if (!inRiproduzione) return;
+    if (indice >= frasi.length) {
+      registra("FINE", "lettura completata (motore audio)");
+      inRiproduzione = false;
+      alCambioStato(false);
+      rilasciaWakeLock();
+      alTerminePlaylist();
+      return;
+    }
+
+    try {
+      // L'URL della unità corrente è già stato preparato durante la
+      // riproduzione precedente, salvo che sia la prima.
+      const urlCorrente = generazioneInCorso
+        ? await generazioneInCorso
+        : await generaAudioUnita(indice);
+      generazioneInCorso = null;
+      if (!inRiproduzione || !urlCorrente) return;
+
+      indiceCorrente = indice;
+      inizioUnitaTimestamp = Date.now();
+      alCambioFrase(indice);
+
+      const audio = ottieniElementoAudio();
+      costruisciCatenaAudio();
+      // Il contesto audio nasce sospeso finché non interviene un gesto
+      // dell'utente: la riproduzione è quel gesto, quindi si riprende qui.
+      if (contestoAudio && contestoAudio.state === "suspended") {
+        try { await contestoAudio.resume(); } catch (e) { /* non bloccante */ }
+      }
+      audio.src = urlCorrente;
+      audio.playbackRate = velocita;
+
+      // Generazione anticipata della prossima unità, avviata subito
+      // dopo l'inizio della riproduzione corrente.
+      if (preAccodamentoAttivo && indice + 1 < frasi.length) {
+        generazioneInCorso = generaAudioUnita(indice + 1).catch(() => null);
+      }
+
+      audio.onended = () => {
+        URL.revokeObjectURL(urlCorrente);
+        if (!inRiproduzione) return;
+        registra("END", `unità ${indice + 1} in ${Date.now() - inizioUnitaTimestamp}ms`);
+        riproduciSequenzaAudio(indice + 1);
+      };
+      audio.onerror = () => {
+        URL.revokeObjectURL(urlCorrente);
+        registra("ERRORE", `riproduzione audio non riuscita su unità ${indice + 1}`);
+        inRiproduzione = false;
+        alCambioStato(false);
+        alErrore("Riproduzione dell'audio non riuscita.");
+      };
+
+      await audio.play();
+      registra("START", `unità ${indice + 1} (motore audio)`);
+    } catch (errore) {
+      registra("ERRORE", `sintesi neurale non riuscita: ${errore.message || errore}`);
+      inRiproduzione = false;
+      alCambioStato(false);
+      rilasciaWakeLock();
+      alErrore(`Sintesi neurale non riuscita: ${errore.message || errore}`);
+    }
+  }
+
+  function fermaAudio() {
+    generazioneInCorso = null;
+    if (elementoAudio) {
+      elementoAudio.onended = null;
+      elementoAudio.onerror = null;
+      elementoAudio.pause();
+      if (elementoAudio.src && elementoAudio.src.startsWith("blob:")) {
+        URL.revokeObjectURL(elementoAudio.src);
+      }
+      elementoAudio.removeAttribute("src");
+    }
+  }
+
+  function play() {
+    if (!frasi.length) return;
+    registra("STATO", `play da unità ${indiceCorrente + 1} (motore ${motoreCorrente.id})`);
+    inRiproduzione = true;
+    alCambioStato(true);
+    alCambioFrase(indiceCorrente);
+    richiediWakeLock();
+
+    if (motoreCorrente.tipo === "audio") {
+      generazioneInCorso = null;
+      riproduciSequenzaAudio(indiceCorrente);
+      return;
+    }
+
+    if (!window.speechSynthesis) return;
+    indiceAccodato = indiceCorrente - 1;
+    rifornisciCoda();
+  }
+
+  function pausa() {
+    registra("STATO", "pausa");
+    inRiproduzione = false;
+    indiceAccodato = -1;
+    alCambioStato(false);
+    rilasciaWakeLock();
+    fermaAudio();
+    if (window.speechSynthesis) window.speechSynthesis.cancel();
+  }
+
+  function interrompi() {
+    inRiproduzione = false;
+    indiceAccodato = -1;
+    rilasciaWakeLock();
+    fermaAudio();
+    if (window.speechSynthesis) window.speechSynthesis.cancel();
+  }
+
+  function vaiAFrase(indice) {
+    const eraInRiproduzione = inRiproduzione;
+    const nuovoIndice = Math.min(Math.max(0, indice), Math.max(0, frasi.length - 1));
+
+    fermaAudio();
+    if (window.speechSynthesis) window.speechSynthesis.cancel();
+    indiceCorrente = nuovoIndice;
+    indiceAccodato = nuovoIndice - 1;
+    alCambioFrase(nuovoIndice);
+    registra("SALTO", `a unità ${nuovoIndice + 1}`);
+
+    if (eraInRiproduzione) {
+      // Intervallo obbligato: cancel() seguito immediatamente da speak()
+      // è una causa documentata di stallo silenzioso del motore.
+      inRiproduzione = true;
+      setTimeout(() => {
+        if (!inRiproduzione) return;
+        if (motoreCorrente.tipo === "audio") riproduciSequenzaAudio(nuovoIndice);
+        else rifornisciCoda();
+      }, RITARDO_DOPO_INTERRUZIONE_MS);
+    }
+  }
+
+  function ripetiFraseCorrente() { vaiAFrase(indiceCorrente); }
+  function fraseSuccessiva() { vaiAFrase(indiceCorrente + 1); }
+  function frasePrecedente() { vaiAFrase(indiceCorrente - 1); }
+  function ottieniIndiceCorrente() { return indiceCorrente; }
+  function eInRiproduzione() { return inRiproduzione; }
+
+  function motoreAttivo() { return motoreCorrente; }
+
+  return {
+    motoreAttivo,
+    impostaEqualizzatore,
+    ottieniEqualizzatore,
+    equalizzatoreDisponibile,
+    elencaMotori,
+    impostaMotore,
+    elencaVoci,
+    impostaVoce,
+    impostaVelocita,
+    impostaTono,
+    impostaPreAccodamento,
+    impostaCallback,
+    impostaFrasi,
+    play,
+    pausa,
+    interrompi,
+    vaiAFrase,
+    ripetiFraseCorrente,
+    fraseSuccessiva,
+    frasePrecedente,
+    ottieniIndiceCorrente,
+    eInRiproduzione,
+    provaVoce,
+    ottieniRegistro,
+    svuotaRegistro,
+  };
+})();
+
+
+/* ===== js/app.js ===== */
+/* =========================================================
+   app.js — orchestrazione dell'interfaccia
+
+   Nota sulla finestra di testo: per libri lunghi (migliaia di frasi)
+   non viene creato un nodo DOM per ogni frase dell'intero libro
+   (costoso), ma una finestra scorrevole di AMPIEZZA_FINESTRA frasi
+   centrata sulla posizione corrente, ricostruita solo quando la
+   lettura esce dal margine centrale della finestra attuale.
+   ========================================================= */
+
+(function () {
+  "use strict";
+
+  const AMPIEZZA_FINESTRA = 60;
+  const MARGINE_RICOSTRUZIONE = 15;
+  const INTERVALLO_MINIMO_SALVATAGGIO_MS = 3000;
+  const VERSIONE_APP = "4.2";
+  const DATA_VERSIONE_APP = "11 settembre 2026";
+
+  const DIMENSIONI_CARATTERE = [0.88, 0.96, 1.04, 1.14, 1.26, 1.4, 1.56];
+  const INDICE_DIMENSIONE_PREDEFINITO = 2;
+
+  let libroCorrente = null; // record completo dal DB, incluse frasi/capitoli
+  let finestraInizio = 0;
+  let finestraFine = 0;
+  let ultimoSalvataggioTimestamp = 0;
+  let salvataggioInSospeso = null;
+  let indiceDimensioneCarattere = INDICE_DIMENSIONE_PREDEFINITO;
+
+  /* Due spazi di indici convivono e vanno tenuti allineati:
+
+     - FRASI: unità semantiche stabili, prodotte in importazione. Vi
+       puntano i capitoli, i segnalibri e la posizione salvata, che
+       devono restare validi anche se l'utente cambia le impostazioni
+       di suddivisione.
+     - UNITÀ DI LETTURA: ciò che viene effettivamente pronunciato,
+       derivato dalle frasi secondo le impostazioni correnti. Cambia
+       ogni volta che l'utente modifica limite o suddivisione.
+
+     Le due mappe qui sotto traducono fra i due spazi. */
+
+  let unitaDiLettura = [];
+  let mappaUnitaAFrase = [];   // indice unità -> indice frase
+  let mappaFraseAUnita = [];   // indice frase -> prima unità corrispondente
+
+  let impostazioniLettura = {
+    spezzaFrasiLunghe: true,
+    limiteCaratteri: 250,
+    preAccodamento: true,
+  };
+
+  let opzioniImport = {
+    rimuoviIntestazioni: true,
+    unisciSillabazioni: true,
+    riconosciTitoli: true,
+    ricostruisciParagrafi: true,
+  };
+
+  const TEMI = [
+    { id: "chiaro", nome: "Chiaro" },
+    { id: "scuro", nome: "Scuro" },
+    { id: "seppia", nome: "Seppia" },
+    { id: "grigio", nome: "Grigio" },
+    { id: "amoled-ambra", nome: "AMOLED ambra" },
+    { id: "amoled-rosso", nome: "AMOLED rosso (notte)" },
+  ];
+
+  /* Coda di lettura (multi-selezione di paragrafi).
+
+     Quando è attiva, la sequenza pronunciata non è più il libro dal
+     punto corrente in avanti, ma un elenco di paragrafi scelti
+     dall'utente, eventualmente non contigui. Posizione nel libro e
+     sequenza di lettura, che finora coincidevano, qui si separano:
+     la posizione salvata NON viene aggiornata durante l'ascolto della
+     coda, così tornando alla lettura normale si riprende da dove si
+     era davvero rimasti. */
+  let modalitaSelezione = false;
+  let paragrafiSelezionati = new Set();
+  let codaAttiva = false;
+  let ripetiCoda = false;
+
+  // ---------- Riferimenti DOM ----------
+  const el = (id) => document.getElementById(id);
+
+  const vistaLibreria = el("vista-libreria");
+  const vistaLettura = el("vista-lettura");
+  const grigliaLibri = el("griglia-libri");
+  const libreriaVuota = el("libreria-vuota");
+  const inputFile = el("input-file");
+  const overlayCaricamento = el("overlay-caricamento");
+
+  const titoloLettura = el("titolo-lettura");
+  const infoCapitoloCorrente = el("info-capitolo-corrente");
+  const pannelloTesto = el("pannello-testo");
+  const scrubber = el("scrubber");
+  const scrubberPosizione = el("scrubber-posizione");
+  const scrubberTempoStimato = el("scrubber-tempo-stimato");
+
+  const bottonePlay = el("bottone-play");
+  const iconaPlay = el("icona-play");
+  const bottoneIndietroFrase = el("bottone-indietro-frase");
+  const bottoneAvantiFrase = el("bottone-avanti-frase");
+  const bottoneSegnaPosizione = el("bottone-segna-posizione");
+  const bottoneNota = el("bottone-nota");
+
+  const velocitaSlider = el("velocita-slider");
+  const velocitaEtichetta = el("velocita-etichetta");
+  const velocitaMeno = el("velocita-meno");
+  const velocitaPiu = el("velocita-piu");
+
+  const navInferiore = el("nav-inferiore");
+
+  let finestraSVGSospesa = false; // placeholder logico non usato, mantenuto per chiarezza
+
+  // ---------- Utilità ----------
+
+  function mostraOverlay(testo) {
+    overlayCaricamento.textContent = testo;
+    overlayCaricamento.hidden = false;
+  }
+  function nascondiOverlay() {
+    overlayCaricamento.hidden = true;
+  }
+
+  function cambiaVista(nome) {
+    vistaLibreria.hidden = nome !== "libreria";
+    vistaLettura.hidden = nome !== "lettura";
+    Array.from(navInferiore.querySelectorAll("button")).forEach((b) => {
+      b.classList.toggle("attivo", b.dataset.vista === nome);
+    });
+  }
+
+  // ---------- Tema ----------
+
+  async function applicaTema(tema) {
+    const valido = TEMI.some((t) => t.id === tema) ? tema : "chiaro";
+    document.documentElement.setAttribute("data-theme", valido);
+    Array.from(document.querySelectorAll("#selettore-temi button")).forEach((b) =>
+      b.classList.toggle("attivo", b.dataset.tema === valido)
+    );
+    await LibreriaDB.impostaImpostazione("tema", valido);
+  }
+
+  // Il pulsante rapido nella barra di lettura scorre ciclicamente i temi,
+  // così da restare raggiungibile con un tocco senza aprire le impostazioni.
+  async function alternaTema() {
+    const attuale = document.documentElement.getAttribute("data-theme") || "chiaro";
+    const posizione = TEMI.findIndex((t) => t.id === attuale);
+    const prossimo = TEMI[(posizione + 1) % TEMI.length];
+    await applicaTema(prossimo.id);
+    mostraToast(`Tema: ${prossimo.nome}`, 1800);
+  }
+
+  async function alternaSchermoIntero() {
+    try {
+      if (!document.fullscreenElement) await document.documentElement.requestFullscreen();
+      else await document.exitFullscreen();
+    } catch (errore) {
+      // Su file:// alcuni browser negano la richiesta, come già accade
+      // per il wake lock: la funzione degrada senza conseguenze.
+      mostraToast("Lo schermo intero non è consentito in questo contesto.", 4000);
+    }
+  }
+
+  // ---------- Libreria ----------
+
+  function estensioneFile(nomeFile) {
+    const parti = nomeFile.toLowerCase().split(".");
+    return parti.length > 1 ? parti.pop() : "";
+  }
+
+  function nomeSenzaEstensione(nomeFile) {
+    const idx = nomeFile.lastIndexOf(".");
+    return idx > 0 ? nomeFile.slice(0, idx) : nomeFile;
+  }
+
+  async function renderLibreria() {
+    const libri = await LibreriaDB.ottieniTuttiILibri();
+    libri.sort((a, b) => new Date(b.dataImportazione) - new Date(a.dataImportazione));
+
+    grigliaLibri.innerHTML = "";
+    libreriaVuota.hidden = libri.length > 0;
+
+    libri.forEach((libro) => {
+      const percentuale = libro.frasi && libro.frasi.length
+        ? Math.round(((libro.posizioneCorrente || 0) / libro.frasi.length) * 100)
+        : 0;
+
+      const scheda = document.createElement("div");
+      scheda.className = "scheda-libro";
+      scheda.innerHTML = `
+        <div class="copertina">${
+          libro.copertina
+            ? `<img src="${libro.copertina}" alt="" loading="lazy">`
+            : escapeHtml((libro.titolo || "?").slice(0, 1).toUpperCase())
+        }</div>
+        <div class="dettagli">
+          <div class="titolo">${escapeHtml(libro.titolo || "Senza titolo")}</div>
+          <div class="sottotitolo">${escapeHtml(libro.autore || formatoLeggibile(libro.formato))} · ${percentuale}%</div>
+          <div class="barra-progresso"><span style="width:${percentuale}%"></span></div>
+        </div>
+        <button class="elimina" title="Elimina libro" aria-label="Elimina libro">
+          <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" fill="none"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0-1 14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2L4 6"/></svg>
+        </button>
+      `;
+      scheda.querySelector(".elimina").addEventListener("click", async (evento) => {
+        evento.stopPropagation();
+        if (confirm(`Eliminare "${libro.titolo || "questo libro"}" dalla libreria? L'operazione non è reversibile.`)) {
+          await LibreriaDB.eliminaLibro(libro.id);
+          if (libroCorrente && libroCorrente.id === libro.id) {
+            libroCorrente = null;
+            ControllerTTS.interrompi();
+            cambiaVista("libreria");
+          }
+          renderLibreria();
+        }
+      });
+      scheda.addEventListener("click", () => apriLibro(libro.id));
+      grigliaLibri.appendChild(scheda);
+    });
+  }
+
+  function formatoLeggibile(formato) {
+    return { pdf: "PDF", epub: "EPUB", txt: "Testo" }[formato] || formato;
+  }
+
+  async function gestisciImportazione(fileList) {
+    const file_array = Array.from(fileList);
+    for (const file of file_array) {
+      const estensione = estensioneFile(file.name);
+      mostraOverlay(`Importazione di "${file.name}" in corso…`);
+      try {
+        let risultato;
+        if (estensione === "pdf") {
+          const buffer = await file.arrayBuffer();
+          risultato = await analizzaPDF(buffer, opzioniImport);
+        } else if (estensione === "epub") {
+          const buffer = await file.arrayBuffer();
+          risultato = await analizzaEPUB(buffer);
+        } else if (estensione === "txt" || estensione === "md") {
+          const testo = await file.text();
+          risultato = await analizzaTXT(testo);
+        } else if (["mobi", "azw", "azw3", "prc"].includes(estensione)) {
+          // I formati Kindle vengono passati come File: il modulo legge
+          // il file per porzioni, senza caricarlo interamente in memoria.
+          risultato = await analizzaMOBI(file);
+        } else {
+          alert(`Formato non supportato: .${estensione}. Formati validi: PDF, EPUB, MOBI, AZW3, TXT.`);
+          continue;
+        }
+
+        if (!risultato.frasi || risultato.frasi.length === 0) {
+          alert(`Non è stato possibile estrarre testo da "${file.name}". Il file potrebbe essere protetto, vuoto o basato su immagini scansionate senza testo selezionabile.`);
+          continue;
+        }
+
+        const libro = {
+          titolo: risultato.titolo || nomeSenzaEstensione(file.name),
+          autore: risultato.autore || null,
+          formato: estensione,
+          fileBlob: file,
+          dimensioneFile: file.size,
+          dataImportazione: new Date().toISOString(),
+          frasi: risultato.frasi,
+          metaFrasi: risultato.metaFrasi || null,
+          copertina: risultato.copertina || null,
+          capitoli: risultato.capitoli || [{ titolo: "Inizio", indiceFrase: 0 }],
+          capitoliRicostruiti: risultato.capitoliRicostruiti || false,
+          fonteIndice: risultato.fonteIndice || null,
+          numeroPagine: risultato.numeroPagine || null,
+          opzioniImport: risultato.opzioniImport || null,
+          pulizia: risultato.pulizia || null,
+          posizioneCorrente: 0,
+        };
+        await LibreriaDB.aggiungiLibro(libro);
+      } catch (errore) {
+        console.error("Errore durante l'importazione:", errore);
+        alert(`Errore durante l'importazione di "${file.name}": ${errore.message || errore}`);
+      }
+    }
+    nascondiOverlay();
+    renderLibreria();
+  }
+
+  // ---------- Lettura ----------
+
+  async function apriLibro(id) {
+    const libro = await LibreriaDB.ottieniLibro(id);
+    if (!libro) return;
+    libroCorrente = libro;
+
+    // Libri importati prima dell'introduzione dei metadati strutturali:
+    // si ricostruisce un raggruppamento approssimativo in memoria, senza
+    // riscriverlo nel database, così un'eventuale reimportazione futura
+    // sostituisce l'approssimazione con la struttura reale.
+    if (!libroCorrente.metaFrasi || libroCorrente.metaFrasi.length !== libroCorrente.frasi.length) {
+      libroCorrente.metaFrasi = ricostruisciMetaDiRipiego(libroCorrente.frasi, libroCorrente.capitoli);
+      libroCorrente.metaRicostruiti = true;
+    }
+
+    titoloLettura.textContent = libro.titolo || "Senza titolo";
+    cambiaVista("lettura");
+
+    costruisciUnita();
+    const unitaPartenza = fraseAUnita(libro.posizioneCorrente || 0);
+    ControllerTTS.impostaFrasi(unitaDiLettura, unitaPartenza);
+    finestraInizio = -1; // forza la prima costruzione della finestra
+    aggiornaVistaLettura(libro.posizioneCorrente || 0);
+    aggiornaIconaPlay(false);
+    configuraMediaSession();
+  }
+
+  function costruisciUnita() {
+    if (!libroCorrente) return;
+    unitaDiLettura = [];
+    mappaUnitaAFrase = [];
+    mappaFraseAUnita = new Array(libroCorrente.frasi.length);
+
+    libroCorrente.frasi.forEach((frase, indiceFrase) => {
+      const pezzi = impostazioniLettura.spezzaFrasiLunghe
+        ? spezzaRispettandoPunteggiatura(frase, impostazioniLettura.limiteCaratteri)
+        : [frase];
+      mappaFraseAUnita[indiceFrase] = unitaDiLettura.length;
+      pezzi.forEach((pezzo) => {
+        unitaDiLettura.push(pezzo);
+        mappaUnitaAFrase.push(indiceFrase);
+      });
+    });
+  }
+
+  function fraseAUnita(indiceFrase) {
+    if (!mappaFraseAUnita.length) return 0;
+    const limitato = Math.min(Math.max(0, indiceFrase), mappaFraseAUnita.length - 1);
+    return mappaFraseAUnita[limitato] ?? 0;
+  }
+
+  function unitaAFrase(indiceUnita) {
+    if (!mappaUnitaAFrase.length) return 0;
+    const limitato = Math.min(Math.max(0, indiceUnita), mappaUnitaAFrase.length - 1);
+    return mappaUnitaAFrase[limitato] ?? 0;
+  }
+
+  function ricostruisciUnitaMantenendoPosizione() {
+    if (!libroCorrente) return;
+    const eraInRiproduzione = ControllerTTS.eInRiproduzione();
+    const fraseAttuale = unitaAFrase(ControllerTTS.ottieniIndiceCorrente());
+    ControllerTTS.interrompi();
+    costruisciUnita();
+    const nuovaUnita = fraseAUnita(fraseAttuale);
+    ControllerTTS.impostaFrasi(unitaDiLettura, nuovaUnita);
+    finestraInizio = -1;
+    aggiornaVistaLettura(nuovaUnita);
+    if (eraInRiproduzione) ControllerTTS.play();
+  }
+
+  function trovaCapitoloCorrente(indiceFrase) {
+    if (!libroCorrente || !libroCorrente.capitoli.length) return null;
+    let capitoloTrovato = libroCorrente.capitoli[0];
+    let indicePosizione = 0;
+    for (let i = 0; i < libroCorrente.capitoli.length; i++) {
+      if (libroCorrente.capitoli[i].indiceFrase <= indiceFrase) {
+        capitoloTrovato = libroCorrente.capitoli[i];
+        indicePosizione = i;
+      } else break;
+    }
+    return { capitolo: capitoloTrovato, indice: indicePosizione, totale: libroCorrente.capitoli.length };
+  }
+
+  /* I libri importati con le versioni precedenti non hanno metaFrasi.
+     Senza un ripiego, ogni singola frase verrebbe resa come paragrafo
+     a sé: il testo apparirebbe spezzettato riga per riga. Si ricostruisce
+     quindi un raggruppamento approssimativo, raccogliendo frasi
+     consecutive fino a un limite e interrompendo dove il testo lo
+     suggerisce. Resta un'approssimazione: la struttura reale si
+     recupera solo reimportando il file. */
+  function ricostruisciMetaDiRipiego(frasi, capitoli) {
+    const inizioCapitoli = new Set((capitoli || []).map((c) => c.indiceFrase));
+    const meta = [];
+    let paragrafo = 1;
+    let frasiNelParagrafo = 0;
+
+    frasi.forEach((frase, indice) => {
+      if (inizioCapitoli.has(indice) && indice !== 0) {
+        paragrafo += 1;
+        frasiNelParagrafo = 0;
+      }
+      meta.push({ tipo: "paragrafo", paragrafo, pagina: null });
+      frasiNelParagrafo += 1;
+      const terminaPeriodo = /[.!?»"]\s*$/.test(frase.trim());
+      if (frasiNelParagrafo >= 5 && terminaPeriodo) {
+        paragrafo += 1;
+        frasiNelParagrafo = 0;
+      }
+    });
+    return meta;
+  }
+
+  function metaDiFrase(indiceFrase) {
+    if (!libroCorrente || !libroCorrente.metaFrasi) return { tipo: "paragrafo", paragrafo: 1, pagina: null };
+    return libroCorrente.metaFrasi[indiceFrase] || { tipo: "paragrafo", paragrafo: 1, pagina: null };
+  }
+
+  /* Riformattazione a video.
+
+     Il testo viene reso rispettando la struttura del documento: i
+     titoli come intestazioni distinte e spaziate, i paragrafi come
+     blocchi separati. Le unità di lettura restano l'unità di
+     evidenziazione, ma sono annidate dentro il blocco cui
+     appartengono anziché srotolate in un flusso continuo. */
+  function renderFinestraTesto(indiceCentro) {
+    const totale = unitaDiLettura.length;
+    finestraInizio = Math.max(0, indiceCentro - Math.floor(AMPIEZZA_FINESTRA / 2));
+    finestraFine = Math.min(totale, finestraInizio + AMPIEZZA_FINESTRA);
+
+    const blocchiHtml = [];
+    let paragrafoCorrente = null;
+    let tipoCorrente = null;
+    let accumulate = [];
+
+    const chiudiBlocco = () => {
+      if (!accumulate.length) return;
+      const tag = tipoCorrente === "titolo" ? "h4" : "p";
+      const classi = tipoCorrente === "titolo" ? "blocco-titolo" : "blocco-paragrafo";
+      const selezionato = paragrafiSelezionati.has(paragrafoCorrente) ? " selezionato" : "";
+      blocchiHtml.push(
+        `<${tag} class="${classi}${selezionato}" data-paragrafo="${paragrafoCorrente}">${accumulate.join("")}</${tag}>`
+      );
+      accumulate = [];
+    };
+
+    for (let i = finestraInizio; i < finestraFine; i++) {
+      const indiceFrase = mappaUnitaAFrase[i];
+      const meta = metaDiFrase(indiceFrase);
+      if (meta.paragrafo !== paragrafoCorrente) {
+        chiudiBlocco();
+        paragrafoCorrente = meta.paragrafo;
+        tipoCorrente = meta.tipo;
+      }
+      accumulate.push(
+        `<span class="frase" data-indice="${i}">${escapeHtml(unitaDiLettura[i])} </span>`
+      );
+    }
+    chiudiBlocco();
+    pannelloTesto.innerHTML = blocchiHtml.join("");
+  }
+
+  function aggiornaEvidenziazione(indice) {
+    const fuoriFinestra =
+      indice < finestraInizio + MARGINE_RICOSTRUZIONE ||
+      indice > finestraFine - MARGINE_RICOSTRUZIONE ||
+      finestraInizio === -1;
+
+    if (fuoriFinestra) {
+      renderFinestraTesto(indice);
+    }
+    pannelloTesto.querySelectorAll(".frase.attiva").forEach((n) => n.classList.remove("attiva"));
+    const nodoAttivo = pannelloTesto.querySelector(`.frase[data-indice="${indice}"]`);
+    if (nodoAttivo) {
+      nodoAttivo.classList.add("attiva");
+      nodoAttivo.scrollIntoView({ block: "center", behavior: "smooth" });
+    }
+  }
+
+  function aggiornaScrubber(indice) {
+    const totale = unitaDiLettura.length;
+    const percentuale = totale > 1 ? Math.round((indice / (totale - 1)) * 100) : 0;
+    scrubber.value = percentuale;
+    scrubberPosizione.textContent = `${percentuale}%`;
+    const frasiRimanenti = totale - indice;
+    scrubberTempoStimato.textContent = `~${stimaMinutiLettura(frasiRimanenti)} min rimanenti`;
+  }
+
+  function aggiornaIndicatorePagina(indiceUnita) {
+    const campo = el("campo-pagina");
+    const contenitore = el("indicatore-pagina");
+    if (!libroCorrente) return;
+    const meta = metaDiFrase(unitaAFrase(indiceUnita));
+    if (meta.pagina && libroCorrente.numeroPagine) {
+      contenitore.hidden = false;
+      if (document.activeElement !== campo) campo.value = meta.pagina;
+      el("totale-pagine").textContent = `/ ${libroCorrente.numeroPagine}`;
+    } else {
+      // Formati privi di paginazione (EPUB, TXT, testo incollato):
+      // si mostra il numero di paragrafo, che è l'unico riferimento
+      // di posizione dotato di senso in quei casi.
+      contenitore.hidden = false;
+      if (document.activeElement !== campo) campo.value = meta.paragrafo || 0;
+      el("totale-pagine").textContent = "par.";
+    }
+  }
+
+  function vaiAPagina(numeroPagina) {
+    if (!libroCorrente || !libroCorrente.metaFrasi) return;
+    const campoPagina = libroCorrente.numeroPagine ? "pagina" : "paragrafo";
+    const indiceFrase = libroCorrente.metaFrasi.findIndex(
+      (m) => m && m[campoPagina] >= numeroPagina
+    );
+    if (indiceFrase < 0) {
+      mostraToast("Posizione non trovata nel documento.", 3000);
+      return;
+    }
+    const unita = fraseAUnita(indiceFrase);
+    ControllerTTS.vaiAFrase(unita);
+    aggiornaVistaLettura(unita);
+  }
+
+  /* ---------- Coda di lettura (multi-selezione) ---------- */
+
+  function alternaModalitaSelezione() {
+    modalitaSelezione = !modalitaSelezione;
+    document.body.classList.toggle("modalita-selezione", modalitaSelezione);
+    el("barra-selezione").hidden = !modalitaSelezione;
+    if (!modalitaSelezione && codaAttiva) uscitaDallaCoda();
+    if (!modalitaSelezione) {
+      paragrafiSelezionati.clear();
+      finestraInizio = -1;
+      aggiornaVistaLettura(ControllerTTS.ottieniIndiceCorrente());
+    }
+    aggiornaContatoreSelezione();
+  }
+
+  function alternaSelezioneParagrafo(numeroParagrafo) {
+    if (paragrafiSelezionati.has(numeroParagrafo)) paragrafiSelezionati.delete(numeroParagrafo);
+    else paragrafiSelezionati.add(numeroParagrafo);
+    const nodo = pannelloTesto.querySelector(`[data-paragrafo="${numeroParagrafo}"]`);
+    if (nodo) nodo.classList.toggle("selezionato", paragrafiSelezionati.has(numeroParagrafo));
+    aggiornaContatoreSelezione();
+  }
+
+  function aggiornaContatoreSelezione() {
+    el("contatore-selezione").textContent =
+      paragrafiSelezionati.size === 1 ? "1 paragrafo" : `${paragrafiSelezionati.size} paragrafi`;
+    el("bottone-leggi-selezione").disabled = paragrafiSelezionati.size === 0;
+  }
+
+  function avviaLetturaCoda() {
+    if (!paragrafiSelezionati.size || !libroCorrente) return;
+    const ordinati = Array.from(paragrafiSelezionati).sort((a, b) => a - b);
+    const unita = [];
+    ordinati.forEach((numeroParagrafo) => {
+      libroCorrente.frasi.forEach((frase, indiceFrase) => {
+        if (metaDiFrase(indiceFrase).paragrafo !== numeroParagrafo) return;
+        const pezzi = impostazioniLettura.spezzaFrasiLunghe
+          ? spezzaRispettandoPunteggiatura(frase, impostazioniLettura.limiteCaratteri)
+          : [frase];
+        unita.push(...pezzi);
+      });
+    });
+    if (!unita.length) return;
+
+    codaAttiva = true;
+    document.body.classList.add("coda-attiva");
+    ControllerTTS.impostaFrasi(unita, 0);
+    ControllerTTS.play();
+    mostraToast(
+      ripetiCoda
+        ? "Lettura della selezione in ripetizione. La posizione nel libro non viene modificata."
+        : "Lettura della selezione. La posizione nel libro non viene modificata.",
+      4000
+    );
+  }
+
+  function uscitaDallaCoda() {
+    codaAttiva = false;
+    document.body.classList.remove("coda-attiva");
+    ControllerTTS.interrompi();
+    const unitaRipresa = fraseAUnita(libroCorrente ? libroCorrente.posizioneCorrente || 0 : 0);
+    ControllerTTS.impostaFrasi(unitaDiLettura, unitaRipresa);
+    finestraInizio = -1;
+    aggiornaVistaLettura(unitaRipresa);
+  }
+
+  function aggiornaInfoCapitolo(indiceUnita) {
+    const info = trovaCapitoloCorrente(unitaAFrase(indiceUnita));
+    if (info) {
+      infoCapitoloCorrente.textContent = `Capitolo ${info.indice + 1} di ${info.totale} — ${info.capitolo.titolo}`;
+    }
+  }
+
+  function aggiornaVistaLettura(indiceUnita) {
+    // Durante l'ascolto di una selezione, la vista del libro non segue
+    // la coda: l'utente sta ascoltando estratti fuori sequenza, e
+    // spostare l'evidenziazione e la posizione salvata gli farebbe
+    // perdere il punto in cui si trovava davvero.
+    if (codaAttiva) return;
+    aggiornaEvidenziazione(indiceUnita);
+    aggiornaScrubber(indiceUnita);
+    aggiornaInfoCapitolo(indiceUnita);
+    aggiornaIndicatorePagina(indiceUnita);
+    pianificaSalvataggioPosizione(indiceUnita);
+  }
+
+  function pianificaSalvataggioPosizione(indiceUnita) {
+    if (!libroCorrente || codaAttiva) return;
+    // La posizione si salva sempre come indice di FRASE, non di unità:
+    // resta così valida anche se l'utente cambia le impostazioni di
+    // suddivisione, che ridefiniscono le unità ma non le frasi.
+    const indice = unitaAFrase(indiceUnita);
+    libroCorrente.posizioneCorrente = indice;
+    // Throttle, non debounce: durante un ascolto continuo (frasi che
+    // cambiano ogni pochi secondi) un debounce classico non scatterebbe
+    // mai, perché ogni nuova frase lo rimanda — con il rischio concreto
+    // di perdere tutti i progressi della sessione se l'app viene chiusa
+    // bruscamente. Qui invece si garantisce un salvataggio effettivo
+    // almeno ogni INTERVALLO_MINIMO_SALVATAGGIO_MS, anche a lettura
+    // ininterrotta.
+    const ora = Date.now();
+    const trascorso = ora - ultimoSalvataggioTimestamp;
+    if (trascorso >= INTERVALLO_MINIMO_SALVATAGGIO_MS) {
+      eseguiSalvataggioPosizione(indice);
+    } else if (!salvataggioInSospeso) {
+      salvataggioInSospeso = setTimeout(() => {
+        salvataggioInSospeso = null;
+        if (libroCorrente) eseguiSalvataggioPosizione(libroCorrente.posizioneCorrente);
+      }, INTERVALLO_MINIMO_SALVATAGGIO_MS - trascorso);
+    }
+  }
+
+  function eseguiSalvataggioPosizione(indice) {
+    ultimoSalvataggioTimestamp = Date.now();
+    LibreriaDB.aggiornaLibro(libroCorrente.id, { posizioneCorrente: indice }).catch((e) =>
+      console.error("Salvataggio posizione non riuscito:", e)
+    );
+  }
+
+  /* Media Session API: espone titolo, autore e copertina alla
+     schermata di blocco e alla notifica di sistema, e vi collega i
+     comandi di riproduzione.
+
+     Limite noto: su Android il pannello dei media compare in modo
+     affidabile solo quando è in corso una riproduzione audio vera e
+     propria. La Web Speech API non conta come tale, quindi con il
+     motore di sistema i controlli possono non apparire; con un motore
+     neurale, che riproduce un vero elemento audio, compaiono. È una
+     differenza della piattaforma, non dell'implementazione. */
+  function configuraMediaSession() {
+    if (!("mediaSession" in navigator) || !libroCorrente) return;
+    try {
+      const illustrazioni = libroCorrente.copertina
+        ? [{ src: libroCorrente.copertina, sizes: "512x512", type: "image/jpeg" }]
+        : [];
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: libroCorrente.titolo || "Senza titolo",
+        artist: libroCorrente.autore || "CLaudio",
+        album: "audio convert library",
+        artwork: illustrazioni,
+      });
+
+      const azioni = [
+        ["play", () => { ControllerTTS.play(); aggiornaIconaPlay(true); }],
+        ["pause", () => { ControllerTTS.pausa(); aggiornaIconaPlay(false); }],
+        ["previoustrack", () => vaiACapitolo(-1)],
+        ["nexttrack", () => vaiACapitolo(1)],
+        ["seekbackward", () => { ControllerTTS.frasePrecedente(); aggiornaVistaLettura(ControllerTTS.ottieniIndiceCorrente()); }],
+        ["seekforward", () => { ControllerTTS.fraseSuccessiva(); aggiornaVistaLettura(ControllerTTS.ottieniIndiceCorrente()); }],
+      ];
+      azioni.forEach(([azione, gestore]) => {
+        try {
+          navigator.mediaSession.setActionHandler(azione, gestore);
+        } catch (e) { /* azione non supportata dal browser: si prosegue */ }
+      });
+    } catch (errore) { /* API presente ma non utilizzabile: non bloccante */ }
+  }
+
+  function aggiornaStatoMediaSession(inRiproduzione) {
+    if (!("mediaSession" in navigator)) return;
+    try {
+      navigator.mediaSession.playbackState = inRiproduzione ? "playing" : "paused";
+    } catch (e) { /* non bloccante */ }
+  }
+
+  function aggiornaIconaPlay(inRiproduzione) {
+    iconaPlay.innerHTML = inRiproduzione
+      ? '<rect x="5" y="4" width="5" height="16"></rect><rect x="14" y="4" width="5" height="16"></rect>'
+      : '<polygon points="6 4 20 12 6 20 6 4"></polygon>';
+    bottonePlay.setAttribute("aria-label", inRiproduzione ? "Metti in pausa" : "Riproduci");
+    bottonePlay.title = inRiproduzione ? "Metti in pausa" : "Riproduci";
+  }
+
+  function vaiACapitolo(direzione) {
+    if (!libroCorrente || !libroCorrente.capitoli.length) return;
+    const info = trovaCapitoloCorrente(unitaAFrase(ControllerTTS.ottieniIndiceCorrente()));
+    if (!info) return;
+    const nuovoIndiceCapitolo = Math.min(
+      Math.max(0, info.indice + direzione),
+      libroCorrente.capitoli.length - 1
+    );
+    const nuovaUnita = fraseAUnita(libroCorrente.capitoli[nuovoIndiceCapitolo].indiceFrase);
+    ControllerTTS.vaiAFrase(nuovaUnita);
+    aggiornaVistaLettura(nuovaUnita);
+  }
+
+  let idToast = null;
+  function mostraToast(testo, durataMs = 5000) {
+    const toast = el("toast");
+    toast.textContent = testo;
+    toast.hidden = false;
+    toast.classList.add("visibile");
+    clearTimeout(idToast);
+    idToast = setTimeout(() => {
+      toast.classList.remove("visibile");
+      setTimeout(() => { toast.hidden = true; }, 300);
+    }, durataMs);
+  }
+
+  function applicaDimensioneCarattere() {
+    const dimensione = DIMENSIONI_CARATTERE[indiceDimensioneCarattere];
+    pannelloTesto.style.fontSize = dimensione + "rem";
+    LibreriaDB.impostaImpostazione("indiceDimensioneCarattere", indiceDimensioneCarattere);
+  }
+
+  function cambiaDimensioneCarattere(direzione) {
+    const nuovo = indiceDimensioneCarattere + direzione;
+    if (nuovo < 0 || nuovo >= DIMENSIONI_CARATTERE.length) return;
+    indiceDimensioneCarattere = nuovo;
+    applicaDimensioneCarattere();
+  }
+
+  /* La Clipboard API è disponibile solo in contesto sicuro (HTTPS o
+     localhost): aprendo l'applicazione da file:// navigator.clipboard
+     è indefinito, ed è questa la causa dell'errore riscontrato. Il
+     metodo execCommand è deprecato ma non ha quel vincolo, quindi
+     resta l'unica via funzionante in questo contesto: si tenta prima
+     l'API moderna e si ricade sulla seconda. */
+  function copiaConRipiego(testo) {
+    const area = document.createElement("textarea");
+    area.value = testo;
+    area.setAttribute("readonly", "");
+    area.style.position = "fixed";
+    area.style.top = "-1000px";
+    area.style.opacity = "0";
+    document.body.appendChild(area);
+    area.select();
+    area.setSelectionRange(0, area.value.length);
+    let riuscita = false;
+    try {
+      riuscita = document.execCommand("copy");
+    } catch (errore) {
+      riuscita = false;
+    }
+    document.body.removeChild(area);
+    return riuscita;
+  }
+
+  async function copiaTesto(testo, descrizione) {
+    if (!testo) return;
+    if (navigator.clipboard && window.isSecureContext) {
+      try {
+        await navigator.clipboard.writeText(testo);
+        mostraToast(`${descrizione} copiato negli appunti.`, 3000);
+        return;
+      } catch (errore) { /* si prosegue con il ripiego */ }
+    }
+    if (copiaConRipiego(testo)) {
+      mostraToast(`${descrizione} copiato negli appunti.`, 3000);
+    } else {
+      mostraToast("Copia non riuscita. Seleziona manualmente il testo.", 4000);
+    }
+  }
+
+  async function copiaPassaggioCorrente() {
+    if (!libroCorrente || !unitaDiLettura.length) return;
+    // Si copia la frase intera, non la singola unità di lettura: una
+    // citazione troncata a metà periodo non avrebbe utilità.
+    const indiceFrase = unitaAFrase(ControllerTTS.ottieniIndiceCorrente());
+    const testo = libroCorrente.frasi[indiceFrase] || "";
+    await copiaTesto(testo, "Passaggio");
+  }
+
+  async function importaTestoIncollato() {
+    const testo = el("area-testo-incollato").value;
+    if (!testo.trim()) { mostraToast("Nessun testo da importare.", 3000); return; }
+    const titoloIndicato = el("campo-titolo-incollato").value.trim();
+
+    mostraOverlay("Elaborazione del testo in corso…");
+    try {
+      const risultato = await analizzaTXT(testo);
+      const libro = {
+        titolo: titoloIndicato || `Testo del ${new Date().toLocaleDateString("it-IT")}`,
+        autore: null,
+        formato: "testo",
+        fileBlob: null,
+        dimensioneFile: testo.length,
+        dataImportazione: new Date().toISOString(),
+        frasi: risultato.frasi,
+        metaFrasi: risultato.metaFrasi || null,
+        capitoli: risultato.capitoli || [{ titolo: "Inizio", indiceFrase: 0 }],
+        capitoliRicostruiti: false,
+        fonteIndice: risultato.fonteIndice || null,
+        numeroPagine: null,
+        opzioniImport: null,
+        pulizia: null,
+        posizioneCorrente: 0,
+      };
+      await LibreriaDB.aggiungiLibro(libro);
+      el("area-testo-incollato").value = "";
+      el("campo-titolo-incollato").value = "";
+      chiudiCassetto("sfondo-cassetto-testo", "cassetto-testo");
+      await renderLibreria();
+      mostraToast("Testo importato nella libreria.", 3000);
+    } catch (errore) {
+      mostraToast(`Importazione non riuscita: ${errore.message || errore}`, 5000);
+    } finally {
+      nascondiOverlay();
+    }
+  }
+
+  async function salvaMetadati() {
+    if (!libroCorrente) return;
+    const nuovoTitolo = el("campo-meta-titolo").value.trim();
+    const nuovoAutore = el("campo-meta-autore").value.trim();
+    if (!nuovoTitolo) { mostraToast("Il titolo non può essere vuoto.", 3000); return; }
+    libroCorrente.titolo = nuovoTitolo;
+    libroCorrente.autore = nuovoAutore || null;
+    await LibreriaDB.aggiornaLibro(libroCorrente.id, {
+      titolo: nuovoTitolo,
+      autore: nuovoAutore || null,
+    });
+    titoloLettura.textContent = nuovoTitolo;
+    chiudiCassetto("sfondo-cassetto-metadati", "cassetto-metadati");
+    mostraToast("Metadati aggiornati.", 3000);
+  }
+
+  function popolaMetadati() {
+    if (!libroCorrente) return;
+    el("campo-meta-titolo").value = libroCorrente.titolo || "";
+    el("campo-meta-autore").value = libroCorrente.autore || "";
+    const info = el("info-import-libro");
+    const parti = [`Formato: ${(libroCorrente.formato || "").toUpperCase()}`];
+    if (libroCorrente.numeroPagine) parti.push(`${libroCorrente.numeroPagine} pagine`);
+    if (libroCorrente.fonteIndice) {
+      const descrizioni = {
+        outline: "indice strutturato del file",
+        toc: "sommario del formato EPUB",
+        sommario: "sommario stampato riconosciuto nel testo",
+        titoli: "titoli riconosciuti tipograficamente",
+        testo: "righe riconosciute come titoli",
+      };
+      parti.push(`Indice: ${descrizioni[libroCorrente.fonteIndice] || libroCorrente.fonteIndice}`);
+    }
+    if (libroCorrente.pulizia) {
+      if (libroCorrente.pulizia.righeRimosse) parti.push(`${libroCorrente.pulizia.righeRimosse} righe di impaginazione rimosse`);
+      if (libroCorrente.pulizia.titoliRiconosciuti) parti.push(`${libroCorrente.pulizia.titoliRiconosciuti} titoli riconosciuti`);
+    }
+    info.textContent = parti.join(" · ");
+  }
+
+  /* ---------- Equalizzatore ---------- */
+
+  const PRESET_EQUALIZZATORE = {
+    neutro: { bassi: 0, medi: 0, alti: 0, compressione: false },
+    // Attenua le alte frequenze, dove si concentra l'asprezza tipica
+    // della sintesi vocale, e sostiene leggermente il corpo della voce.
+    caldo: { bassi: 4, medi: 1, alti: -5, compressione: false },
+    // Enfatizza la regione dell'intelligibilità: utile in ambiente
+    // rumoroso o con voci poco definite.
+    chiarezza: { bassi: -2, medi: 4, alti: 2, compressione: false },
+    // Ascolto prolungato a basso volume: meno estremi, picchi livellati.
+    notte: { bassi: 2, medi: 0, alti: -7, compressione: true },
+  };
+
+  function aggiornaInterfacciaEqualizzatore() {
+    const valori = ControllerTTS.ottieniEqualizzatore();
+    el("eq-bassi").value = valori.bassi;
+    el("eq-medi").value = valori.medi;
+    el("eq-alti").value = valori.alti;
+    el("eq-compressione").checked = valori.compressione;
+    el("eq-bassi-etichetta").textContent = `${valori.bassi} dB`;
+    el("eq-medi-etichetta").textContent = `${valori.medi} dB`;
+    el("eq-alti-etichetta").textContent = `${valori.alti} dB`;
+
+    const disponibile = ControllerTTS.equalizzatoreDisponibile();
+    el("avviso-equalizzatore").hidden = disponibile;
+    el("bande-equalizzatore").classList.toggle("disattivata", !disponibile);
+    el("preset-equalizzatore").classList.toggle("disattivata", !disponibile);
+    ["eq-bassi", "eq-medi", "eq-alti", "eq-compressione"].forEach((idElemento) => {
+      el(idElemento).disabled = !disponibile;
+    });
+    Array.from(document.querySelectorAll("#preset-equalizzatore button")).forEach((b) => {
+      b.disabled = !disponibile;
+    });
+  }
+
+  async function salvaEqualizzatore(valori) {
+    ControllerTTS.impostaEqualizzatore(valori);
+    await LibreriaDB.impostaImpostazione("equalizzatore", ControllerTTS.ottieniEqualizzatore());
+    aggiornaInterfacciaEqualizzatore();
+  }
+
+  function aggiornaStatisticheLibro() {
+    const contenitore = el("statistiche-libro");
+    if (!libroCorrente) { contenitore.textContent = ""; return; }
+    const s = calcolaStatistiche(libroCorrente.frasi);
+    const parti = [
+      `${s.parole.toLocaleString("it-IT")} parole`,
+      `${s.caratteri.toLocaleString("it-IT")} caratteri`,
+      `${s.frasi.toLocaleString("it-IT")} frasi`,
+      `${unitaDiLettura.length.toLocaleString("it-IT")} unità di lettura`,
+      `durata stimata ${formattaDurata(s.minutiStimati)}`,
+    ];
+    if (libroCorrente.pulizia && libroCorrente.pulizia.righeRimosse) {
+      parti.push(`${libroCorrente.pulizia.righeRimosse} righe di impaginazione rimosse in importazione`);
+    }
+    contenitore.textContent = parti.join(" · ");
+  }
+
+  function aggiornaRegistroDiagnostico() {
+    const testo = ControllerTTS.ottieniRegistro();
+    el("registro-diagnostico").value = testo || "Nessun evento registrato ancora. Avvia una lettura e riapri questo registro dopo che si è verificato un blocco.";
+  }
+
+  // ---------- Cassetti (capitoli / segnalibri / impostazioni) ----------
+
+  function apriCassetto(nomeSfondo, nomeCassetto) {
+    el(nomeSfondo).hidden = false;
+    const cassetto = el(nomeCassetto);
+    cassetto.hidden = false;
+    cassetto.style.display = "block";
+  }
+  function chiudiCassetto(nomeSfondo, nomeCassetto) {
+    el(nomeSfondo).hidden = true;
+    const cassetto = el(nomeCassetto);
+    cassetto.hidden = true;
+    cassetto.style.display = "none";
+  }
+
+  function collegaCassetto(idBottoneApertura, nomeSfondo, nomeCassetto, alApertura) {
+    el(idBottoneApertura).addEventListener("click", () => {
+      if (alApertura) alApertura();
+      apriCassetto(nomeSfondo, nomeCassetto);
+    });
+    el(nomeSfondo).addEventListener("click", () => chiudiCassetto(nomeSfondo, nomeCassetto));
+  }
+
+  function renderElencoCapitoli() {
+    const contenitore = el("elenco-capitoli");
+    if (!libroCorrente || !libroCorrente.capitoli.length) {
+      contenitore.innerHTML = '<div class="elenco-vuoto">Nessun capitolo individuato per questo libro.</div>';
+      return;
+    }
+    contenitore.innerHTML = "";
+    if (libroCorrente.capitoliRicostruiti) {
+      const nota = document.createElement("div");
+      nota.className = "elenco-vuoto";
+      nota.style.padding = "0 0 12px 0";
+      nota.style.textAlign = "left";
+      nota.textContent = "Indice ricostruito automaticamente dal sommario stampato (non da un indice PDF strutturato): verificane l'accuratezza.";
+      contenitore.appendChild(nota);
+    }
+    libroCorrente.capitoli.forEach((capitolo, indice) => {
+      const voce = document.createElement("div");
+      voce.className = "voce-elenco";
+      voce.innerHTML = `<div class="testo-voce"><div class="titolo-voce">${escapeHtml(capitolo.titolo)}</div></div>`;
+      voce.addEventListener("click", () => {
+        const unitaCapitolo = fraseAUnita(capitolo.indiceFrase);
+        ControllerTTS.vaiAFrase(unitaCapitolo);
+        aggiornaVistaLettura(unitaCapitolo);
+        chiudiCassetto("sfondo-cassetto-capitoli", "cassetto-capitoli");
+      });
+      contenitore.appendChild(voce);
+    });
+  }
+
+  async function renderElencoSegnalibri() {
+    const contenitore = el("elenco-segnalibri");
+    if (!libroCorrente) {
+      contenitore.innerHTML = '<div class="elenco-vuoto">Apri un libro per vedere i suoi segnalibri.</div>';
+      return;
+    }
+    const segnalibri = await LibreriaDB.segnalibriPerLibro(libroCorrente.id);
+    if (!segnalibri.length) {
+      contenitore.innerHTML = '<div class="elenco-vuoto">Nessun segnalibro per questo libro.</div>';
+      return;
+    }
+    contenitore.innerHTML = "";
+    segnalibri.forEach((segnalibro) => {
+      const anteprimaFrase = (libroCorrente.frasi[segnalibro.indiceFrase] || "").slice(0, 90);
+      const voce = document.createElement("div");
+      voce.className = "voce-elenco";
+      voce.innerHTML = `
+        <div class="testo-voce">
+          <div class="titolo-voce">${segnalibro.tipo === "nota" ? escapeHtml(segnalibro.testoNota) : "Segnalibro"}</div>
+          <div class="sottotitolo-voce">${escapeHtml(anteprimaFrase)}…</div>
+        </div>
+        <span class="badge-tipo ${segnalibro.tipo === "nota" ? "nota" : ""}">${segnalibro.tipo === "nota" ? "Nota" : "Posizione"}</span>
+        <button class="elimina" title="Elimina segnalibro" aria-label="Elimina segnalibro">
+          <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" fill="none"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0-1 14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2L4 6"/></svg>
+        </button>
+      `;
+      voce.querySelector(".elimina").addEventListener("click", async (evento) => {
+        evento.stopPropagation();
+        await LibreriaDB.eliminaSegnalibro(segnalibro.id);
+        renderElencoSegnalibri();
+      });
+      voce.addEventListener("click", () => {
+        const unitaSegnalibro = fraseAUnita(segnalibro.indiceFrase);
+        ControllerTTS.vaiAFrase(unitaSegnalibro);
+        aggiornaVistaLettura(unitaSegnalibro);
+        chiudiCassetto("sfondo-cassetto-segnalibri", "cassetto-segnalibri");
+      });
+      contenitore.appendChild(voce);
+    });
+  }
+
+  async function aggiungiSegnalibroPosizione() {
+    if (!libroCorrente) return;
+    await LibreriaDB.aggiungiSegnalibro({
+      bookId: libroCorrente.id,
+      tipo: "posizione",
+      indiceFrase: unitaAFrase(ControllerTTS.ottieniIndiceCorrente()),
+      dataCreazione: new Date().toISOString(),
+    });
+    const bottoneOriginale = bottoneSegnaPosizione.innerHTML;
+    bottoneSegnaPosizione.style.color = "var(--accento)";
+    setTimeout(() => { bottoneSegnaPosizione.style.color = ""; }, 700);
+  }
+
+  async function aggiungiNota() {
+    if (!libroCorrente) return;
+    const testoNota = window.prompt("Testo della nota:");
+    if (!testoNota) return;
+    await LibreriaDB.aggiungiSegnalibro({
+      bookId: libroCorrente.id,
+      tipo: "nota",
+      indiceFrase: unitaAFrase(ControllerTTS.ottieniIndiceCorrente()),
+      testoNota,
+      dataCreazione: new Date().toISOString(),
+    });
+  }
+
+  // ---------- Impostazioni ----------
+
+  /* ---------- Motori neurali (Piper) ---------- */
+
+  async function eseguiDiagnosticaMotori() {
+    const contenitore = el("diagnostica-piper");
+    contenitore.innerHTML = "<p class=\"nota-impostazione\">Verifica dei requisiti in corso…</p>";
+    const { esiti, utilizzabile } = await MotoreNeurale.verificaRequisiti();
+
+    const righe = esiti
+      .map((e) => `<li class="${e.esito ? "requisito-ok" : "requisito-ko"}"><strong>${escapeHtml(e.nome)}</strong>: ${e.esito ? "disponibile" : "non disponibile"}<br><span>${escapeHtml(e.nota)}</span></li>`)
+      .join("");
+
+    const conclusione = utilizzabile
+      ? "<p class=\"nota-impostazione\">Tutti i requisiti sono soddisfatti: scarica una voce per iniziare.</p>"
+      : "<p class=\"nota-impostazione\">Almeno un requisito non è soddisfatto. Questo non dipende dall'applicazione ma dal contesto in cui viene aperta: un file locale (file://) non è un'origine sicura, e senza origine sicura il browser non concede l'archivio in cui il modello vocale va conservato. Pubblicando lo stesso identico file su GitHub Pages, o servendolo da un server locale, i requisiti risultano soddisfatti senza alcuna modifica al codice.</p>";
+
+    contenitore.innerHTML = `<ul class="elenco-requisiti">${righe}</ul>${conclusione}`;
+    el("bottone-scarica-voce").disabled = !utilizzabile;
+  }
+
+  async function popolaVociPiper() {
+    const selettore = el("selettore-voce-piper");
+    selettore.innerHTML = "<option>Caricamento…</option>";
+    const voci = await MotoreNeurale.elencaVoci();
+    const scaricate = await MotoreNeurale.elencaScaricate();
+    selettore.innerHTML = "";
+    voci.forEach((voce) => {
+      const opzione = document.createElement("option");
+      opzione.value = voce.id;
+      const giaPresente = scaricate.includes(voce.id);
+      opzione.textContent = `${voce.nome}${voce.dimensione ? " " + voce.dimensione : ""}${giaPresente ? " — già scaricata" : ""}`;
+      selettore.appendChild(opzione);
+    });
+    if (selettore.value) ControllerTTS.impostaVoce(selettore.value);
+  }
+
+  async function scaricaVocePiper() {
+    const idVoce = el("selettore-voce-piper").value;
+    if (!idVoce) return;
+    const stato = el("stato-scaricamento-piper");
+    const bottone = el("bottone-scarica-voce");
+    bottone.disabled = true;
+    stato.textContent = "Avvio dello scaricamento…";
+    try {
+      await MotoreNeurale.scaricaVoce(idVoce, (percentuale) => {
+        stato.textContent = percentuale === null
+          ? "Scaricamento in corso…"
+          : `Scaricamento: ${percentuale}%`;
+      });
+      ControllerTTS.impostaVoce(idVoce);
+      stato.textContent = "Voce pronta. Resta memorizzata per gli utilizzi successivi.";
+      await popolaVociPiper();
+    } catch (errore) {
+      stato.textContent = `Scaricamento non riuscito: ${errore.message || errore}`;
+    } finally {
+      bottone.disabled = false;
+    }
+  }
+
+  async function popolaMotoriEVoci() {
+    const selettoreMotore = el("selettore-motore");
+    selettoreMotore.innerHTML = "";
+    ControllerTTS.elencaMotori().forEach((motore) => {
+      const opzione = document.createElement("option");
+      opzione.value = motore.id;
+      opzione.textContent = motore.nome;
+      selettoreMotore.appendChild(opzione);
+    });
+
+    const aggiornaListaVoci = () => {
+      const selettoreVoce = el("selettore-voce");
+      const voci = ControllerTTS.elencaVoci();
+      selettoreVoce.innerHTML = "";
+      if (!voci.length) {
+        const opzione = document.createElement("option");
+        opzione.textContent = "Nessuna voce disponibile";
+        selettoreVoce.appendChild(opzione);
+        return;
+      }
+      voci.forEach((voce) => {
+        const opzione = document.createElement("option");
+        opzione.value = voce.voiceURI;
+        opzione.textContent = `${voce.name} (${voce.lang})`;
+        selettoreVoce.appendChild(opzione);
+      });
+    };
+
+    aggiornaListaVoci();
+    if (window.speechSynthesis) {
+      window.speechSynthesis.onvoiceschanged = aggiornaListaVoci;
+    }
+
+    selettoreMotore.addEventListener("change", async (e) => {
+      const idMotore = e.target.value;
+      ControllerTTS.interrompi();
+      ControllerTTS.impostaMotore(idMotore);
+      await LibreriaDB.impostaImpostazione("motore", idMotore);
+      const neurale = idMotore === "piper";
+      el("sezione-piper").hidden = !neurale;
+      el("riga-tono").hidden = neurale; // il tono è proprietà del modello
+      if (neurale) {
+        await popolaVociPiper();
+        await eseguiDiagnosticaMotori();
+      } else {
+        aggiornaListaVoci();
+      }
+      aggiornaInterfacciaEqualizzatore();
+    });
+
+    el("selettore-voce").addEventListener("change", (e) => ControllerTTS.impostaVoce(e.target.value));
+    el("bottone-scarica-voce").addEventListener("click", scaricaVocePiper);
+    el("bottone-riverifica-piper").addEventListener("click", eseguiDiagnosticaMotori);
+    el("bottone-prova-voce").addEventListener("click", () => {
+      ControllerTTS.provaVoce("Questa è una voce di prova, per verificare velocità e tono prima di iniziare l'ascolto.");
+    });
+  }
+
+  // ---------- Collegamento eventi ----------
+
+  function collegaEventi() {
+    // Navigazione inferiore
+    Array.from(navInferiore.querySelectorAll("button")).forEach((bottone) => {
+      bottone.addEventListener("click", () => {
+        if (bottone.dataset.vista === "lettura" && !libroCorrente) {
+          alert("Apri prima un libro dalla libreria.");
+          return;
+        }
+        cambiaVista(bottone.dataset.vista);
+      });
+    });
+
+    el("bottone-indietro").addEventListener("click", () => cambiaVista("libreria"));
+
+    // Import
+    el("bottone-importa").addEventListener("click", () => inputFile.click());
+    inputFile.addEventListener("change", (e) => {
+      if (e.target.files.length) gestisciImportazione(e.target.files);
+      inputFile.value = "";
+    });
+
+    // Trasporto TTS
+    bottonePlay.addEventListener("click", () => {
+      if (ControllerTTS.eInRiproduzione()) ControllerTTS.pausa();
+      else ControllerTTS.play();
+    });
+    bottoneAvantiFrase.addEventListener("click", () => ControllerTTS.fraseSuccessiva());
+    bottoneIndietroFrase.addEventListener("click", () => ControllerTTS.frasePrecedente());
+    el("bottone-ripeti-frase").addEventListener("click", () => ControllerTTS.ripetiFraseCorrente());
+    el("bottone-capitolo-precedente").addEventListener("click", () => vaiACapitolo(-1));
+    el("bottone-capitolo-successivo").addEventListener("click", () => vaiACapitolo(1));
+    bottoneSegnaPosizione.addEventListener("click", aggiungiSegnalibroPosizione);
+    bottoneNota.addEventListener("click", aggiungiNota);
+
+    // Tocco su una frase nel pannello -> salto diretto
+    pannelloTesto.addEventListener("click", (e) => {
+      if (modalitaSelezione) {
+        const blocco = e.target.closest("[data-paragrafo]");
+        if (blocco) alternaSelezioneParagrafo(parseInt(blocco.dataset.paragrafo, 10));
+        return;
+      }
+      const nodo = e.target.closest(".frase");
+      if (!nodo) return;
+      const indice = parseInt(nodo.dataset.indice, 10);
+      ControllerTTS.vaiAFrase(indice);
+      aggiornaVistaLettura(indice);
+    });
+
+    // Scrubber (trascinamento manuale)
+    scrubber.addEventListener("change", () => {
+      if (!libroCorrente) return;
+      const totale = unitaDiLettura.length;
+      const indice = Math.round((scrubber.value / 100) * (totale - 1));
+      ControllerTTS.vaiAFrase(indice);
+      aggiornaVistaLettura(indice);
+    });
+
+    // Velocità
+    function applicaVelocita(v) {
+      const valore = Math.min(4, Math.max(0.5, Math.round(v * 10) / 10));
+      velocitaSlider.value = valore;
+      velocitaEtichetta.textContent = `${valore.toFixed(1)}x`;
+      ControllerTTS.impostaVelocita(valore);
+      LibreriaDB.impostaImpostazione("velocita", valore);
+    }
+    velocitaSlider.addEventListener("input", () => applicaVelocita(parseFloat(velocitaSlider.value)));
+    velocitaMeno.addEventListener("click", () => applicaVelocita(parseFloat(velocitaSlider.value) - 0.1));
+    velocitaPiu.addEventListener("click", () => applicaVelocita(parseFloat(velocitaSlider.value) + 0.1));
+
+    // Tono
+    const sliderTono = el("slider-tono");
+    sliderTono.addEventListener("input", () => {
+      const valore = parseFloat(sliderTono.value);
+      el("tono-etichetta").textContent = valore.toFixed(1);
+      ControllerTTS.impostaTono(valore);
+      LibreriaDB.impostaImpostazione("tono", valore);
+    });
+
+    // Motore
+    el("selettore-motore").addEventListener("change", (e) => {
+      ControllerTTS.impostaMotore(e.target.value);
+      LibreriaDB.impostaImpostazione("motore", e.target.value);
+    });
+
+    // Tema
+    el("bottone-tema").addEventListener("click", alternaTema);
+    Array.from(document.querySelectorAll("#selettore-temi button")).forEach((b) =>
+      b.addEventListener("click", () => applicaTema(b.dataset.tema))
+    );
+
+    el("bottone-schermo-intero").addEventListener("click", alternaSchermoIntero);
+
+    // Opzioni di importazione: valgono per i file importati in seguito
+    [
+      ["chk-rimuovi-intestazioni", "rimuoviIntestazioni"],
+      ["chk-unisci-sillabazioni", "unisciSillabazioni"],
+      ["chk-riconosci-titoli", "riconosciTitoli"],
+      ["chk-ricostruisci-paragrafi", "ricostruisciParagrafi"],
+    ].forEach(([idElemento, chiave]) => {
+      el(idElemento).addEventListener("change", (e) => {
+        opzioniImport[chiave] = e.target.checked;
+        LibreriaDB.impostaImpostazione("opzioniImport", opzioniImport);
+      });
+    });
+
+    // Testo incollato e metadati
+    collegaCassetto("bottone-apri-testo", "sfondo-cassetto-testo", "cassetto-testo");
+    el("bottone-importa-testo").addEventListener("click", importaTestoIncollato);
+    collegaCassetto("bottone-metadati", "sfondo-cassetto-metadati", "cassetto-metadati", popolaMetadati);
+    el("bottone-salva-metadati").addEventListener("click", salvaMetadati);
+
+    // Indicatore di pagina con salto diretto
+    const campoPagina = el("campo-pagina");
+    campoPagina.addEventListener("change", () => {
+      const valore = parseInt(campoPagina.value, 10);
+      if (Number.isFinite(valore) && valore > 0) vaiAPagina(valore);
+      campoPagina.blur();
+    });
+
+    // Multi-selezione di paragrafi
+    el("bottone-selezione").addEventListener("click", alternaModalitaSelezione);
+    el("chk-ripeti-coda").addEventListener("change", (e) => { ripetiCoda = e.target.checked; });
+    el("bottone-leggi-selezione").addEventListener("click", avviaLetturaCoda);
+
+    // Cassetti
+    // Dimensione carattere e copia del passaggio
+    el("bottone-carattere-meno").addEventListener("click", () => cambiaDimensioneCarattere(-1));
+    el("bottone-carattere-piu").addEventListener("click", () => cambiaDimensioneCarattere(1));
+    el("bottone-copia-testo").addEventListener("click", copiaPassaggioCorrente);
+
+    // Opzioni di lettura
+    const sliderTonoVoce = el("slider-tono-voce");
+    sliderTonoVoce.addEventListener("input", () => {
+      const valore = parseFloat(sliderTonoVoce.value);
+      el("tono-voce-etichetta").textContent = valore.toFixed(1);
+      el("slider-tono").value = valore;
+      el("tono-etichetta").textContent = valore.toFixed(1);
+      ControllerTTS.impostaTono(valore);
+      LibreriaDB.impostaImpostazione("tono", valore);
+    });
+
+    el("chk-spezza-frasi").addEventListener("change", (e) => {
+      impostazioniLettura.spezzaFrasiLunghe = e.target.checked;
+      LibreriaDB.impostaImpostazione("spezzaFrasiLunghe", e.target.checked);
+      ricostruisciUnitaMantenendoPosizione();
+      aggiornaStatisticheLibro();
+    });
+
+    el("sel-limite-caratteri").addEventListener("change", (e) => {
+      impostazioniLettura.limiteCaratteri = parseInt(e.target.value, 10);
+      LibreriaDB.impostaImpostazione("limiteCaratteri", impostazioniLettura.limiteCaratteri);
+      ricostruisciUnitaMantenendoPosizione();
+      aggiornaStatisticheLibro();
+    });
+
+    el("chk-pre-accodamento").addEventListener("change", (e) => {
+      impostazioniLettura.preAccodamento = e.target.checked;
+      ControllerTTS.impostaPreAccodamento(e.target.checked);
+      LibreriaDB.impostaImpostazione("preAccodamento", e.target.checked);
+    });
+
+    [["eq-bassi", "bassi"], ["eq-medi", "medi"], ["eq-alti", "alti"]].forEach(([idElemento, banda]) => {
+      el(idElemento).addEventListener("input", () => {
+        const valore = parseInt(el(idElemento).value, 10);
+        el(`${idElemento}-etichetta`).textContent = `${valore} dB`;
+        salvaEqualizzatore({ [banda]: valore });
+      });
+    });
+    el("eq-compressione").addEventListener("change", (e) =>
+      salvaEqualizzatore({ compressione: e.target.checked })
+    );
+    Array.from(document.querySelectorAll("#preset-equalizzatore button")).forEach((b) =>
+      b.addEventListener("click", () => salvaEqualizzatore(PRESET_EQUALIZZATORE[b.dataset.preset]))
+    );
+
+    collegaCassetto("bottone-opzioni-voce", "sfondo-cassetto-voce", "cassetto-voce", aggiornaInterfacciaEqualizzatore);
+    collegaCassetto("bottone-capitoli", "sfondo-cassetto-capitoli", "cassetto-capitoli", renderElencoCapitoli);
+    collegaCassetto("bottone-segnalibri", "sfondo-cassetto-segnalibri", "cassetto-segnalibri", renderElencoSegnalibri);
+    collegaCassetto("bottone-impostazioni", "sfondo-cassetto-impostazioni", "cassetto-impostazioni", aggiornaStatisticheLibro);
+    collegaCassetto("bottone-diagnostica", "sfondo-cassetto-diagnostica", "cassetto-diagnostica", aggiornaRegistroDiagnostico);
+
+    el("bottone-aggiorna-registro").addEventListener("click", aggiornaRegistroDiagnostico);
+    el("bottone-svuota-registro").addEventListener("click", () => {
+      ControllerTTS.svuotaRegistro();
+      aggiornaRegistroDiagnostico();
+    });
+    el("bottone-copia-registro").addEventListener("click", async () => {
+      await copiaTesto(ControllerTTS.ottieniRegistro(), "Registro");
+    });
+
+    // Backup
+    el("bottone-esporta").addEventListener("click", async () => {
+      mostraOverlay("Preparazione del backup in corso…");
+      try {
+        const dati = await LibreriaDB.esportaTutto();
+        const blob = new Blob([JSON.stringify(dati)], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `backup-lettore-ebook-${new Date().toISOString().slice(0, 10)}.json`;
+        link.click();
+        URL.revokeObjectURL(url);
+      } catch (errore) {
+        alert("Errore durante l'esportazione: " + errore.message);
+      }
+      nascondiOverlay();
+    });
+
+    el("bottone-importa-backup").addEventListener("click", () => el("input-backup").click());
+    el("input-backup").addEventListener("change", async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      mostraOverlay("Ripristino del backup in corso…");
+      try {
+        const testo = await file.text();
+        const dati = JSON.parse(testo);
+        await LibreriaDB.importaTutto(dati);
+        await renderLibreria();
+      } catch (errore) {
+        alert("Errore durante l'importazione del backup: " + errore.message);
+      }
+      nascondiOverlay();
+      e.target.value = "";
+    });
+
+    el("bottone-cancella-tutto").addEventListener("click", async () => {
+      if (confirm("Cancellare l'intera libreria, inclusi tutti i segnalibri? L'operazione non è reversibile. Valuta prima di esportare un backup.")) {
+        await LibreriaDB.cancellaTutto();
+        libroCorrente = null;
+        ControllerTTS.interrompi();
+        cambiaVista("libreria");
+        renderLibreria();
+      }
+    });
+  }
+
+  // ---------- Avvio ----------
+
+  async function avvia() {
+    const temaSalvato = await LibreriaDB.ottieniImpostazione("tema", "chiaro");
+    await applicaTema(temaSalvato);
+
+    ControllerTTS.impostaCallback({
+      onCambioFrase: (indice) => aggiornaVistaLettura(indice),
+      onCambioStato: (inRiproduzione) => {
+        aggiornaIconaPlay(inRiproduzione);
+        aggiornaStatoMediaSession(inRiproduzione);
+        if (!inRiproduzione && libroCorrente && !codaAttiva) {
+          // Salvataggio immediato ad ogni pausa/arresto: non si aspetta
+          // il prossimo giro di throttle, così anche una pausa breve
+          // non rischia di perdere l'ultima posizione raggiunta.
+          eseguiSalvataggioPosizione(ControllerTTS.ottieniIndiceCorrente());
+        }
+      },
+      onTerminePlaylist: () => {
+        // Se la coda è in ripetizione, la si riavvia invece di fermarsi:
+        // è il comportamento richiesto per l'ascolto ciclico di un
+        // passaggio da memorizzare.
+        if (codaAttiva && ripetiCoda) {
+          ControllerTTS.vaiAFrase(0);
+          ControllerTTS.play();
+          return;
+        }
+        if (codaAttiva) uscitaDallaCoda();
+        aggiornaIconaPlay(false);
+      },
+      onErrore: (messaggio) => mostraToast(messaggio),
+    });
+
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "hidden" && libroCorrente && !codaAttiva) {
+        // Ultima rete di sicurezza: l'app in background su Android può
+        // essere sospesa dal sistema operativo in qualsiasi momento,
+        // quindi si forza un salvataggio non appena lo schermo/l'app
+        // passano in secondo piano, invece di fidarsi solo del timer.
+        eseguiSalvataggioPosizione(ControllerTTS.ottieniIndiceCorrente());
+      }
+    });
+
+    const velocitaSalvata = await LibreriaDB.ottieniImpostazione("velocita", 1.0);
+    velocitaSlider.value = velocitaSalvata;
+    velocitaEtichetta.textContent = `${velocitaSalvata.toFixed(1)}x`;
+    ControllerTTS.impostaVelocita(velocitaSalvata);
+
+    const tonoSalvato = await LibreriaDB.ottieniImpostazione("tono", 1.0);
+    el("slider-tono").value = tonoSalvato;
+    el("tono-etichetta").textContent = tonoSalvato.toFixed(1);
+    ControllerTTS.impostaTono(tonoSalvato);
+
+    el("slider-tono-voce").value = tonoSalvato;
+    el("tono-voce-etichetta").textContent = tonoSalvato.toFixed(1);
+
+    const motoreSalvato = await LibreriaDB.ottieniImpostazione("motore", "webspeech");
+    ControllerTTS.impostaMotore(motoreSalvato);
+    el("selettore-motore").value = motoreSalvato;
+    if (motoreSalvato === "piper") {
+      el("sezione-piper").hidden = false;
+      el("riga-tono").hidden = true;
+      popolaVociPiper();
+      eseguiDiagnosticaMotori();
+    }
+
+    const eqSalvato = await LibreriaDB.ottieniImpostazione("equalizzatore", null);
+    if (eqSalvato) ControllerTTS.impostaEqualizzatore(eqSalvato);
+    aggiornaInterfacciaEqualizzatore();
+
+    const voceSalvata = await LibreriaDB.ottieniImpostazione("voce", null);
+    if (voceSalvata) ControllerTTS.impostaVoce(voceSalvata);
+
+    impostazioniLettura.spezzaFrasiLunghe = await LibreriaDB.ottieniImpostazione("spezzaFrasiLunghe", true);
+    impostazioniLettura.limiteCaratteri = await LibreriaDB.ottieniImpostazione("limiteCaratteri", 250);
+    impostazioniLettura.preAccodamento = await LibreriaDB.ottieniImpostazione("preAccodamento", true);
+    el("chk-spezza-frasi").checked = impostazioniLettura.spezzaFrasiLunghe;
+    el("sel-limite-caratteri").value = String(impostazioniLettura.limiteCaratteri);
+    el("chk-pre-accodamento").checked = impostazioniLettura.preAccodamento;
+    ControllerTTS.impostaPreAccodamento(impostazioniLettura.preAccodamento);
+
+    const opzioniSalvate = await LibreriaDB.ottieniImpostazione("opzioniImport", null);
+    if (opzioniSalvate) opzioniImport = Object.assign(opzioniImport, opzioniSalvate);
+    el("chk-rimuovi-intestazioni").checked = opzioniImport.rimuoviIntestazioni;
+    el("chk-unisci-sillabazioni").checked = opzioniImport.unisciSillabazioni;
+    el("chk-riconosci-titoli").checked = opzioniImport.riconosciTitoli;
+    el("chk-ricostruisci-paragrafi").checked = opzioniImport.ricostruisciParagrafi;
+
+    indiceDimensioneCarattere = await LibreriaDB.ottieniImpostazione(
+      "indiceDimensioneCarattere",
+      INDICE_DIMENSIONE_PREDEFINITO
+    );
+    applicaDimensioneCarattere();
+
+    await popolaMotoriEVoci();
+    collegaEventi();
+    await renderLibreria();
+
+    el("versione-app").textContent = `Versione ${VERSIONE_APP} — ${DATA_VERSIONE_APP}`;
+
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("service-worker.js").catch((e) => {
+        console.warn("Registrazione service worker non riuscita:", e);
+      });
+    }
+  }
+
+  document.addEventListener("DOMContentLoaded", avvia);
+})();
+
+</script>
+</body>
+</html>
