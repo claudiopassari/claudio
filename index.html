@@ -977,6 +977,11 @@ select:focus-visible,
   border-left: 3px solid var(--accento);
 }
 
+.avviso-positivo {
+  color: var(--accento);
+  font-weight: 500;
+}
+
 </style>
 </head>
 <body>
@@ -2963,9 +2968,26 @@ const FORNITORI_NEURALI = [
   },
 ];
 
+/* Voci italiane Piper realmente pubblicate. Il suffisso indica il
+   livello qualitativo del modello: "x_low" è il più basso della scala
+   (campionamento a 16 kHz, modello minuscolo), "medium" usa un modello
+   più grande a 22 kHz. La differenza è udibile: x_low si sceglie solo
+   se il dispositivo fatica. */
 const VOCI_NEURALI = [
-  { id: "auto", nome: "Voce italiana (automatica)" },
+  { id: "it_IT-paola-medium", nome: "Paola — qualità media (consigliata)", tipo: "vits" },
+  { id: "it_IT-riccardo-x_low", nome: "Riccardo — qualità bassa, più leggera", tipo: "vits" },
+  { id: "spa", nome: "Modello spagnolo (accento straniero)", tipo: "transformers" },
 ];
+
+let vocePreferita = "it_IT-paola-medium";
+function impostaVocePreferita(id) {
+  if (id && id !== vocePreferita) {
+    vocePreferita = id;
+    // Cambiare voce impone di ricostruire la pipeline: quella in
+    // memoria è legata al modello precedente.
+    reimposta();
+  }
+}
 
 const MotoreNeurale = (() => {
   let pipelineAttiva = null;
@@ -3048,13 +3070,27 @@ const MotoreNeurale = (() => {
 
   /* ---------- Caricamento con catena di ripieghi ---------- */
 
+  function reimposta() {
+    pipelineAttiva = null;
+    fornitoreAttivo = null;
+  }
+
+  function ordinaCandidati() {
+    // La voce scelta dall'utente va provata per prima; le altre
+    // restano come ripiego, così una voce non disponibile non lascia
+    // l'applicazione senza sintesi.
+    const prescelti = FORNITORI_NEURALI.filter((f) => (f.modelli || []).includes(vocePreferita));
+    const restanti = FORNITORI_NEURALI.filter((f) => !prescelti.includes(f));
+    return [...prescelti, ...restanti];
+  }
+
   async function caricaPipeline(alProgresso) {
     if (pipelineAttiva) return pipelineAttiva;
     if (caricamentoInCorso) return await caricamentoInCorso;
 
     caricamentoInCorso = (async () => {
       const errori = [];
-      for (const fornitore of FORNITORI_NEURALI) {
+      for (const fornitore of ordinaCandidati()) {
         try {
           annota(`Tentativo con ${fornitore.nome}…`);
           const modulo = await import(/* @vite-ignore */ fornitore.urlModulo);
@@ -3227,6 +3263,8 @@ const MotoreNeurale = (() => {
     scaricaModello,
     sintetizza,
     vociDi,
+    impostaVocePreferita,
+    reimposta,
     vociNeurali: VOCI_NEURALI,
     ottieniDiario,
     nomeFornitoreAttivo,
@@ -3476,12 +3514,21 @@ const ControllerTTS = (() => {
       if (contestoAudio && contestoAudio.state === "suspended") {
         try { await contestoAudio.resume(); } catch (e) { /* non bloccante */ }
       }
+      // L'eventuale prova precedente va liberata prima di sostituirla:
+      // premendo ripetutamente "ascolta un esempio" gli URL si
+      // accumulavano, perché onended veniva rimpiazzato senza scattare.
+      if (audio.src && audio.src.startsWith("blob:")) URL.revokeObjectURL(audio.src);
       const url = URL.createObjectURL(blob);
       audio.src = url;
       audio.playbackRate = velocita;
       audio.volume = volume;
       audio.onended = () => URL.revokeObjectURL(url);
-      await audio.play();
+      try {
+        await audio.play();
+      } catch (errore) {
+        URL.revokeObjectURL(url);
+        throw errore;
+      }
       return;
     }
 
@@ -3581,6 +3628,7 @@ const ControllerTTS = (() => {
   let elementoAudio = null;
   let generazioneInCorso = null;
   let generazioneScartata = false;
+  let timerRipresa = null;
 
   /* ---------- Equalizzazione (solo motori di tipo "audio") ----------
 
@@ -3684,6 +3732,41 @@ const ControllerTTS = (() => {
     return motoreCorrente.tipo === "audio";
   }
 
+  /* Stato effettivo della catena, non solo teorico. Serve perché un
+     guasto nella costruzione viene intercettato e non emerge in alcun
+     modo: l'audio continua a uscire, semplicemente senza passare per i
+     filtri, e l'equalizzatore sembra "non funzionare" senza spiegazione. */
+  function statoEqualizzatore() {
+    if (motoreCorrente.tipo !== "audio") {
+      return { attivo: false, motivo: "Richiede un motore neurale: la sintesi di sistema non è intercettabile." };
+    }
+    if (!contestoAudio) {
+      return { attivo: false, motivo: "Catena non ancora costruita: avvia una riproduzione o ascolta un esempio." };
+    }
+    if (contestoAudio.state === "suspended") {
+      return { attivo: false, motivo: "Contesto audio sospeso: il browser lo attiva al primo tocco su un comando di riproduzione." };
+    }
+    const valori = `bassi ${equalizzatore.bassi} dB, medi ${equalizzatore.medi} dB, alti ${equalizzatore.alti} dB`;
+    const tuttoNeutro = !equalizzatore.bassi && !equalizzatore.medi && !equalizzatore.alti && !equalizzatore.compressione;
+    return {
+      attivo: true,
+      motivo: tuttoNeutro
+        ? "Catena attiva, ma tutte le bande sono a zero: nessun effetto udibile finché non le sposti."
+        : `Catena attiva (${valori}).`,
+    };
+  }
+
+  /* Costruzione anticipata: senza di essa la catena nasce solo alla
+     prima riproduzione, e le regolazioni fatte prima sembrano ignorate. */
+  async function preparaCatenaAudio() {
+    if (motoreCorrente.tipo !== "audio") return;
+    ottieniElementoAudio();
+    costruisciCatenaAudio();
+    if (contestoAudio && contestoAudio.state === "suspended") {
+      try { await contestoAudio.resume(); } catch (e) { /* richiede un gesto dell'utente */ }
+    }
+  }
+
   function ottieniElementoAudio() {
     if (!elementoAudio) {
       elementoAudio = new Audio();
@@ -3782,7 +3865,16 @@ const ControllerTTS = (() => {
     // questo, premere pausa durante una sintesi lunga non aveva alcun
     // effetto percepibile e l'audio ripartiva da solo.
     generazioneScartata = true;
-    generazioneInCorso = null;
+    // La promessa pendente non è annullabile: si risolverà comunque
+    // producendo un blob URL che nessuno userà più. Senza liberarlo
+    // esplicitamente resterebbe allocato per l'intera sessione, e su
+    // un libro lungo con molte pause la memoria cresce senza limite.
+    if (generazioneInCorso) {
+      generazioneInCorso
+        .then((url) => { if (url) URL.revokeObjectURL(url); })
+        .catch(() => {});
+      generazioneInCorso = null;
+    }
     if (elementoAudio) {
       elementoAudio.onended = null;
       elementoAudio.onerror = null;
@@ -3815,6 +3907,7 @@ const ControllerTTS = (() => {
 
   function pausa() {
     registra("STATO", "pausa");
+    if (timerRipresa) { clearTimeout(timerRipresa); timerRipresa = null; }
     inRiproduzione = false;
     indiceAccodato = -1;
     alCambioStato(false);
@@ -3824,6 +3917,7 @@ const ControllerTTS = (() => {
   }
 
   function interrompi() {
+    if (timerRipresa) { clearTimeout(timerRipresa); timerRipresa = null; }
     inRiproduzione = false;
     indiceAccodato = -1;
     rilasciaWakeLock();
@@ -3845,8 +3939,15 @@ const ControllerTTS = (() => {
     if (eraInRiproduzione) {
       // Intervallo obbligato: cancel() seguito immediatamente da speak()
       // è una causa documentata di stallo silenzioso del motore.
+      //
+      // Il timer precedente va annullato: toccando ripetutamente
+      // "frase successiva" si accumulavano più riprese programmate, che
+      // allo scadere riavviavano la riproduzione ciascuna da un indice
+      // diverso, producendo voci sovrapposte.
+      if (timerRipresa) clearTimeout(timerRipresa);
       inRiproduzione = true;
-      setTimeout(() => {
+      timerRipresa = setTimeout(() => {
+        timerRipresa = null;
         if (!inRiproduzione) return;
         if (motoreCorrente.tipo === "audio") riproduciSequenzaAudio(nuovoIndice);
         else rifornisciCoda();
@@ -3869,6 +3970,8 @@ const ControllerTTS = (() => {
     impostaEqualizzatore,
     ottieniEqualizzatore,
     equalizzatoreDisponibile,
+    statoEqualizzatore,
+    preparaCatenaAudio,
     elencaMotori,
     impostaMotore,
     elencaVoci,
@@ -3911,7 +4014,7 @@ const ControllerTTS = (() => {
   const AMPIEZZA_FINESTRA = 60;
   const MARGINE_RICOSTRUZIONE = 15;
   const INTERVALLO_MINIMO_SALVATAGGIO_MS = 3000;
-  const VERSIONE_APP = "5.6";
+  const VERSIONE_APP = "5.8";
   const DATA_VERSIONE_APP = "17 settembre 2026";
 
   const DIMENSIONI_CARATTERE = [0.88, 0.96, 1.04, 1.14, 1.26, 1.4, 1.56];
@@ -4181,7 +4284,24 @@ const ControllerTTS = (() => {
 
   // ---------- Lettura ----------
 
+  let aperturaInCorso = false;
+
   async function apriLibro(id) {
+    // La lettura dal database è asincrona: senza guardia, due tocchi
+    // ravvicinati su una scheda avviano due aperture sovrapposte, e la
+    // seconda sovrascrive lo stato della prima mentre questa sta ancora
+    // costruendo unità e mappature. Il risultato è un libro aperto con
+    // indici appartenenti a un altro.
+    if (aperturaInCorso) return;
+    aperturaInCorso = true;
+    try {
+      await apriLibroInterno(id);
+    } finally {
+      aperturaInCorso = false;
+    }
+  }
+
+  async function apriLibroInterno(id) {
     const libro = await LibreriaDB.ottieniLibro(id);
     if (!libro) return;
     libroCorrente = libro;
@@ -4672,6 +4792,14 @@ const ControllerTTS = (() => {
     mostraOverlay("Elaborazione del testo in corso…");
     try {
       const risultato = await analizzaTXT(testo);
+      // Stessa validazione applicata all'importazione da file: un testo
+      // composto di soli spazi o punteggiatura produce zero frasi, e un
+      // libro vuoto in libreria è solo una voce inutilizzabile da
+      // cancellare a mano.
+      if (!risultato.frasi || risultato.frasi.length === 0) {
+        mostraToast("Nessun testo utilizzabile da importare.", 4000);
+        return;
+      }
       const libro = {
         titolo: titoloIndicato || `Testo del ${new Date().toLocaleDateString("it-IT")}`,
         autore: null,
@@ -4786,8 +4914,13 @@ const ControllerTTS = (() => {
       compressione.disabled = !disponibile;
 
       const avviso = el(gruppo.avviso);
-      avviso.hidden = disponibile;
-      if (!disponibile) avviso.textContent = MOTIVO_EQUALIZZATORE_NON_DISPONIBILE;
+      const stato = ControllerTTS.statoEqualizzatore();
+      // L'avviso resta visibile anche quando il motore è compatibile:
+      // riporta se la catena è realmente attiva, cosa che altrimenti
+      // non sarebbe osservabile in alcun modo.
+      avviso.hidden = false;
+      avviso.textContent = disponibile ? stato.motivo : MOTIVO_EQUALIZZATORE_NON_DISPONIBILE;
+      avviso.classList.toggle("avviso-positivo", disponibile && stato.attivo);
       el(gruppo.contenitoreBande).classList.toggle("disattivata", !disponibile);
       el(gruppo.contenitorePreset).classList.toggle("disattivata", !disponibile);
       Array.from(document.querySelectorAll(`#${gruppo.contenitorePreset} button`)).forEach((b) => {
@@ -4797,6 +4930,7 @@ const ControllerTTS = (() => {
   }
 
   async function salvaEqualizzatore(valori) {
+    await ControllerTTS.preparaCatenaAudio();
     ControllerTTS.impostaEqualizzatore(valori);
     await LibreriaDB.impostaImpostazione("equalizzatore", ControllerTTS.ottieniEqualizzatore());
     aggiornaInterfacciaEqualizzatore();
@@ -5103,7 +5237,15 @@ const ControllerTTS = (() => {
       aggiornaInterfacciaEqualizzatore();
     });
 
-    el("selettore-voce").addEventListener("change", (e) => ControllerTTS.impostaVoce(e.target.value));
+    el("selettore-voce").addEventListener("change", (e) => {
+      ControllerTTS.impostaVoce(e.target.value);
+      if (ControllerTTS.motoreAttivo().tipo === "audio") {
+        MotoreNeurale.impostaVocePreferita(e.target.value);
+        el("stato-scaricamento-piper").textContent =
+          "Voce cambiata: premi \"Prepara il modello vocale\" per scaricarla.";
+      }
+      LibreriaDB.impostaImpostazione("voce", e.target.value);
+    });
     el("bottone-scarica-voce").addEventListener("click", scaricaVoceNeurale);
     el("bottone-riverifica-piper").addEventListener("click", eseguiDiagnosticaMotori);
     el("bottone-prova-voce").addEventListener("click", async () => {
@@ -5314,8 +5456,9 @@ const ControllerTTS = (() => {
     const sliderVelocitaImp = el("slider-velocita-imp");
     sliderVelocitaImp.addEventListener("input", () => applicaVelocita(parseFloat(sliderVelocitaImp.value)));
 
-    collegaCassetto("bottone-impostazioni-lettura", "sfondo-cassetto-impostazioni", "cassetto-impostazioni", () => {
+    collegaCassetto("bottone-impostazioni-lettura", "sfondo-cassetto-impostazioni", "cassetto-impostazioni", async () => {
       aggiornaStatisticheLibro();
+      await ControllerTTS.preparaCatenaAudio();
       aggiornaInterfacciaEqualizzatore();
     });
 
@@ -5361,20 +5504,29 @@ const ControllerTTS = (() => {
     });
 
     el("bottone-importa-backup").addEventListener("click", () => el("input-backup").click());
+    // Guardia contro ripristini sovrapposti: il ripristino scrive
+    // sull'intera libreria, e due esecuzioni parallele produrrebbero
+    // libri duplicati o un database in stato incoerente.
+    let ripristinoInCorso = false;
     el("input-backup").addEventListener("change", async (e) => {
+      if (ripristinoInCorso) return;
       const file = e.target.files[0];
       if (!file) return;
+      ripristinoInCorso = true;
       mostraOverlay("Ripristino del backup in corso…");
       try {
         const testo = await file.text();
         const dati = JSON.parse(testo);
         await LibreriaDB.importaTutto(dati);
         await renderLibreria();
+        mostraToast("Backup ripristinato.", 3000);
       } catch (errore) {
         alert("Errore durante l'importazione del backup: " + errore.message);
+      } finally {
+        nascondiOverlay();
+        e.target.value = "";
+        ripristinoInCorso = false;
       }
-      nascondiOverlay();
-      e.target.value = "";
     });
 
     el("bottone-cancella-tutto").addEventListener("click", async () => {
