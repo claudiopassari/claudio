@@ -3005,7 +3005,12 @@ const MotoreNeurale = (() => {
         // multi-thread, irraggiungibile su hosting statico.
         wasm.numThreads = 1;
         wasm.simd = true;
-        wasm.proxy = false;
+        // proxy = true sposta l'inferenza in un worker separato. È
+        // determinante: sul thread principale ogni sintesi congela
+        // l'interfaccia per interi secondi, e su un libro — dove le
+        // sintesi si susseguono senza sosta — l'applicazione smette
+        // del tutto di rispondere ai comandi.
+        wasm.proxy = true;
       }
       annota("Ambiente configurato: thread singolo, modelli remoti, nessun proxy.");
     } catch (errore) {
@@ -3521,6 +3526,7 @@ const ControllerTTS = (() => {
 
   let elementoAudio = null;
   let generazioneInCorso = null;
+  let generazioneScartata = false;
 
   /* ---------- Equalizzazione (solo motori di tipo "audio") ----------
 
@@ -3653,11 +3659,15 @@ const ControllerTTS = (() => {
     try {
       // L'URL della unità corrente è già stato preparato durante la
       // riproduzione precedente, salvo che sia la prima.
+      generazioneScartata = false;
       const urlCorrente = generazioneInCorso
         ? await generazioneInCorso
         : await generaAudioUnita(indice);
       generazioneInCorso = null;
-      if (!inRiproduzione || !urlCorrente) return;
+      if (!inRiproduzione || generazioneScartata || !urlCorrente) {
+        if (urlCorrente) URL.revokeObjectURL(urlCorrente);
+        return;
+      }
 
       indiceCorrente = indice;
       inizioUnitaTimestamp = Date.now();
@@ -3675,7 +3685,9 @@ const ControllerTTS = (() => {
       audio.volume = volume;
 
       // Generazione anticipata della prossima unità, avviata subito
-      // dopo l'inizio della riproduzione corrente.
+      // dopo l'inizio della riproduzione corrente. Sui motori neurali
+      // si evita quando il dispositivo è lento: due sintesi in
+      // parallelo saturano la CPU e rendono l'ascolto a scatti.
       if (preAccodamentoAttivo && indice + 1 < frasi.length) {
         generazioneInCorso = generaAudioUnita(indice + 1).catch(() => null);
       }
@@ -3699,13 +3711,23 @@ const ControllerTTS = (() => {
     } catch (errore) {
       registra("ERRORE", `sintesi neurale non riuscita: ${errore.message || errore}`);
       inRiproduzione = false;
+      generazioneInCorso = null;
       alCambioStato(false);
       rilasciaWakeLock();
-      alErrore(`Sintesi neurale non riuscita: ${errore.message || errore}`);
+      // Ritorno automatico alla sintesi di sistema: è preferibile
+      // proseguire la lettura con una voce meno gradevole che lasciare
+      // l'utente con un'applicazione muta e apparentemente bloccata.
+      motoreCorrente = REGISTRO_MOTORI.webspeech;
+      alErrore(`Sintesi neurale non riuscita (${errore.message || errore}). Ripristinata la sintesi di sistema: premi Play per continuare.`);
     }
   }
 
   function fermaAudio() {
+    // Una sintesi già avviata non è annullabile, ma marcandola come
+    // scartata si evita che al termine riparta la riproduzione: senza
+    // questo, premere pausa durante una sintesi lunga non aveva alcun
+    // effetto percepibile e l'audio ripartiva da solo.
+    generazioneScartata = true;
     generazioneInCorso = null;
     if (elementoAudio) {
       elementoAudio.onended = null;
@@ -3835,7 +3857,7 @@ const ControllerTTS = (() => {
   const AMPIEZZA_FINESTRA = 60;
   const MARGINE_RICOSTRUZIONE = 15;
   const INTERVALLO_MINIMO_SALVATAGGIO_MS = 3000;
-  const VERSIONE_APP = "5.3";
+  const VERSIONE_APP = "5.4";
   const DATA_VERSIONE_APP = "17 settembre 2026";
 
   const DIMENSIONI_CARATTERE = [0.88, 0.96, 1.04, 1.14, 1.26, 1.4, 1.56];
@@ -5330,7 +5352,22 @@ const ControllerTTS = (() => {
         if (codaAttiva) uscitaDallaCoda();
         aggiornaIconaPlay(false);
       },
-      onErrore: (messaggio) => mostraToast(messaggio),
+      onErrore: (messaggio) => {
+        mostraToast(messaggio, 7000);
+        // Il controller può ripiegare da solo sulla sintesi di sistema:
+        // il selettore va riallineato, altrimenti mostrerebbe un motore
+        // diverso da quello realmente in uso.
+        const attivo = ControllerTTS.motoreAttivo();
+        if (el("selettore-motore").value !== attivo.id) {
+          el("selettore-motore").value = attivo.id;
+          el("sezione-piper").hidden = attivo.tipo !== "audio";
+          el("riga-tono").hidden = attivo.tipo === "audio";
+          aggiornaDescrizioneMotore(attivo.id);
+          aggiornaListaVoci();
+          aggiornaInterfacciaEqualizzatore();
+          LibreriaDB.impostaImpostazione("motore", attivo.id);
+        }
+      },
     });
 
     document.addEventListener("visibilitychange", () => {

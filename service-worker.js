@@ -29,7 +29,7 @@
    la versione precedente dalla cache.
    ========================================================= */
 
-const NOME_CACHE = "claudio-v5.3";
+const NOME_CACHE = "claudio-v5.4";
 
 const GUSCIO_APPLICAZIONE = [
   "./",
