@@ -11,7 +11,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="CLaudio">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="description" content="Lettore di PDF, EPUB, MOBI, AZW3 e TXT con sintesi vocale neurale, equalizzatore e libreria locale.">
+<meta name="description" content="Lettore di PDF, EPUB, MOBI, AZW3 e TXT con sintesi vocale, equalizzatore e libreria locale.">
 <style>
 /* =========================================================
    Lettore Ebook — fogli di stile
@@ -2891,52 +2891,47 @@ async function analizzaMOBI(file) {
    presentarsi come silenzio.
    ========================================================= */
 
-/* Candidati verificati sul campo tramite la pagina di collaudo.
+/* Candidati, nell'ordine stabilito da tre collaudi reali.
 
-   ESITO DEL COLLAUDO PRECEDENTE, che ha corretto due miei errori:
-   - L'infrastruttura funziona: con il backend a thread singolo il
-     modello SpeechT5 si è scaricato ed eseguito senza intoppi. Il
-     sospetto sul multi-thread era fondato.
-   - "Xenova/mms-tts-ita" NON ESISTE. Hugging Face risponde
-     "Unauthorized" ai depositi inesistenti, non "non trovato", e
-     avevo dato per scontata una conversione italiana mai pubblicata.
+   COSA HANNO DIMOSTRATO I COLLAUDI, comprese due mie sviste:
 
-   L'ordine qui sotto parte quindi dall'unico modello con voci
-   italiane autentiche e scende verso ripieghi via via più
-   approssimativi, ciascuno comunque udibile. */
+   1. L'infrastruttura funziona. Con il backend a thread singolo i
+      modelli si scaricano ed eseguono senza intoppi.
+   2. "Xenova/mms-tts-ita" non esiste, e non per un errore di
+      conversione: l'italiano manca proprio dalla famiglia MMS-TTS,
+      anche nell'originale. Non esiste alcun modello MMS italiano.
+   3. Kokoro carica correttamente, ma la libreria kokoro-js espone
+      soltanto voci inglesi e britanniche: le voci italiane del
+      pacchetto multilingue non sono raggiungibili da browser.
+
+   CONSEGUENZA ONESTA: a oggi non esiste una voce neurale italiana
+   eseguibile in un browser tramite queste librerie. Restano modelli
+   di lingue affini che leggono il testo italiano con accento
+   straniero. Per l'italiano vero, la sintesi di sistema — le voci
+   Google su Android — resta la scelta migliore, ed è già disponibile
+   nel motore predefinito.
+
+   Lo spagnolo precede il portoghese perché condivide con l'italiano
+   quasi per intero il sistema vocalico e le regole fra grafia e
+   suono: il risultato è comprensibile, con accento. */
 const FORNITORI_NEURALI = [
   {
-    nome: "Kokoro · voce italiana Sara",
-    tipo: "kokoro",
-    urlModulo: "https://cdn.jsdelivr.net/npm/kokoro-js@1.2.1/+esm",
-    modelli: ["onnx-community/Kokoro-82M-v1.0-ONNX"],
-    voce: "if_sara",
-  },
-  {
-    nome: "Kokoro · voce italiana Nicola",
-    tipo: "kokoro",
-    urlModulo: "https://cdn.jsdelivr.net/npm/kokoro-js@1.2.1/+esm",
-    modelli: ["onnx-community/Kokoro-82M-v1.0-ONNX"],
-    voce: "im_nicola",
-  },
-  {
-    /* Ripiego non ovvio ma efficace: il modello spagnolo legge il testo
-       italiano con fonetica spagnola. Le due lingue condividono quasi
-       per intero il sistema vocalico e le regole di corrispondenza fra
-       grafia e suono, quindi il risultato resta pienamente
-       comprensibile, con un accento straniero. Preferibile a una voce
-       inglese, che sull'italiano diventa incomprensibile. */
-    nome: "MMS spagnolo (accento straniero, comprensibile)",
+    nome: "Modello spagnolo su testo italiano",
     tipo: "transformers",
     urlModulo: "https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.5.1",
-    modelli: ["Xenova/mms-tts-spa", "Xenova/mms-tts-por"],
+    modelli: ["Xenova/mms-tts-spa"],
   },
   {
-    nome: "SpeechT5 (inglese, ultima risorsa)",
+    nome: "Modello portoghese su testo italiano",
     tipo: "transformers",
     urlModulo: "https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.5.1",
-    modelli: ["Xenova/speecht5_tts"],
-    richiedeVoce: "https://huggingface.co/datasets/Xenova/transformers.js-docs/resolve/main/speaker_embeddings.bin",
+    modelli: ["Xenova/mms-tts-por"],
+  },
+  {
+    nome: "Modello francese su testo italiano",
+    tipo: "transformers",
+    urlModulo: "https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.5.1",
+    modelli: ["Xenova/mms-tts-fra"],
   },
 ];
 
@@ -3840,7 +3835,7 @@ const ControllerTTS = (() => {
   const AMPIEZZA_FINESTRA = 60;
   const MARGINE_RICOSTRUZIONE = 15;
   const INTERVALLO_MINIMO_SALVATAGGIO_MS = 3000;
-  const VERSIONE_APP = "5.2";
+  const VERSIONE_APP = "5.3";
   const DATA_VERSIONE_APP = "17 settembre 2026";
 
   const DIMENSIONI_CARATTERE = [0.88, 0.96, 1.04, 1.14, 1.26, 1.4, 1.56];
@@ -4773,8 +4768,8 @@ const ControllerTTS = (() => {
   }
 
   const DESCRIZIONI_MOTORE = {
-    webspeech: "Voci del sistema operativo. Immediate e senza scaricamenti, ma il timbro dipende dal dispositivo e non è equalizzabile.",
-    neurale: "Modello vocale italiano eseguito interamente sul dispositivo. Circa 86 MB da scaricare una sola volta, poi funziona anche senza rete. Compatibile con l'equalizzatore. La prima frase richiede qualche secondo, le successive sono più rapide.",
+    webspeech: "Voci del sistema operativo, comprese quelle neurali di Google se installate. A oggi è la scelta migliore per l'italiano: pronuncia corretta, nessuno scaricamento, nessuna attesa. Non è però equalizzabile, perché il parlato va direttamente all'uscita audio senza passare per l'applicazione.",
+    neurale: "ATTENZIONE: non è una voce italiana. Nessun modello neurale italiano è oggi eseguibile in un browser — l'italiano manca dalla famiglia MMS e le voci italiane di Kokoro non sono raggiungibili da JavaScript. Questo motore usa un modello spagnolo che legge il testo italiano: comprensibile ma con accento marcato. Il vantaggio è che funziona senza rete e può essere equalizzato. Per l'italiano corretto resta preferibile la sintesi di sistema.",
   };
 
   function aggiornaDescrizioneMotore(idMotore) {
@@ -4962,7 +4957,7 @@ const ControllerTTS = (() => {
     const bottone = el("bottone-scarica-voce");
     bottone.disabled = true;
     stato.style.whiteSpace = "normal";
-    stato.textContent = "Scaricamento del modello vocale (circa 86 MB, una sola volta)…";
+    stato.textContent = "Scaricamento del modello (circa 40 MB, una sola volta)…";
     try {
       await MotoreNeurale.scaricaModello(idMotore, idVoce, (percentuale, file) => {
         const nome = file ? ` (${String(file).split("/").pop()})` : "";
