@@ -54,10 +54,11 @@ function scrivi(testo, classe) {
 const FRASE = "Questa è una prova della voce neurale italiana.";
 
 const COMBINAZIONI = [
-  { nome: "Transformers.js 3 + MMS ita", url: "https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.5.1", modello: "Xenova/mms-tts-ita" },
-  { nome: "Transformers.js 3 + MMS ita (onnx-community)", url: "https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.5.1", modello: "onnx-community/mms-tts-ita-ONNX" },
-  { nome: "Transformers.js 2 + MMS ita", url: "https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2", modello: "Xenova/mms-tts-ita" },
-  { nome: "Transformers.js 3 + SpeechT5 (inglese)", url: "https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.5.1", modello: "Xenova/speecht5_tts", voce: "https://huggingface.co/datasets/Xenova/transformers.js-docs/resolve/main/speaker_embeddings.bin" },
+  { nome: "Kokoro · voce italiana Sara", tipo: "kokoro", url: "https://cdn.jsdelivr.net/npm/kokoro-js@1.2.1/+esm", modello: "onnx-community/Kokoro-82M-v1.0-ONNX", voce: "if_sara" },
+  { nome: "Kokoro · voce italiana Nicola", tipo: "kokoro", url: "https://cdn.jsdelivr.net/npm/kokoro-js@1.2.1/+esm", modello: "onnx-community/Kokoro-82M-v1.0-ONNX", voce: "im_nicola" },
+  { nome: "MMS spagnolo (accento straniero)", tipo: "transformers", url: "https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.5.1", modello: "Xenova/mms-tts-spa" },
+  { nome: "MMS portoghese (accento straniero)", tipo: "transformers", url: "https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.5.1", modello: "Xenova/mms-tts-por" },
+  { nome: "SpeechT5 (inglese)", tipo: "transformers", url: "https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.5.1", modello: "Xenova/speecht5_tts", speaker: "https://huggingface.co/datasets/Xenova/transformers.js-docs/resolve/main/speaker_embeddings.bin" },
 ];
 
 function componiWav(campioni, frequenza) {
@@ -110,20 +111,31 @@ async function collauda() {
       }
 
       scrivi("Caricamento modello (può richiedere minuti al primo tentativo)…");
-      const sintetizzatore = await modulo.pipeline("text-to-speech", combinazione.modello, {
-        dtype: "fp32",
-        device: "wasm",
-        progress_callback: (e) => {
-          if (e?.status === "progress" && e.total) {
-            const percentuale = Math.round((e.loaded / e.total) * 100);
-            if (percentuale % 25 === 0) scrivi(`  ${e.file}: ${percentuale}%`);
-          }
-        },
-      });
+      let genera;
+      const riferisci = (e) => {
+        if (e?.status === "progress" && e.total) {
+          const p = Math.round((e.loaded / e.total) * 100);
+          if (p % 25 === 0) scrivi(`  ${e.file}: ${p}%`);
+        }
+      };
+
+      if (combinazione.tipo === "kokoro") {
+        const Costruttore = modulo.KokoroTTS || modulo.default?.KokoroTTS;
+        if (!Costruttore) throw new Error("Il modulo non espone KokoroTTS.");
+        const istanza = await Costruttore.from_pretrained(combinazione.modello, {
+          dtype: "q8", device: "wasm", progress_callback: riferisci,
+        });
+        genera = (t) => istanza.generate(t, { voice: combinazione.voce });
+      } else {
+        const pipeline = await modulo.pipeline("text-to-speech", combinazione.modello, {
+          dtype: "fp32", device: "wasm", progress_callback: riferisci,
+        });
+        genera = (t) => pipeline(t, combinazione.speaker ? { speaker_embeddings: combinazione.speaker } : undefined);
+      }
       scrivi("Modello caricato.", "ok");
 
       scrivi("Sintesi in corso…");
-      const uscita = await sintetizzatore(FRASE, combinazione.voce ? { speaker_embeddings: combinazione.voce } : undefined);
+      const uscita = await genera(FRASE);
       scrivi(`Sintesi completata: ${uscita.audio.length} campioni a ${uscita.sampling_rate} Hz.`, "ok");
 
       const blob = componiWav(uscita.audio, uscita.sampling_rate);
