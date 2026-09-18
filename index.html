@@ -1104,6 +1104,9 @@ select:focus-visible,
         <button class="icona-bottone" id="bottone-schermo-intero" title="Schermo intero" aria-label="Attiva o disattiva lo schermo intero">
           <svg viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
         </button>
+        <button class="icona-bottone" id="bottone-impostazioni-lettura" title="Impostazioni" aria-label="Apri le impostazioni">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6h.09A1.65 1.65 0 0 0 10 3.09V3a2 2 0 0 1 4 0v.09A1.65 1.65 0 0 0 15 4.6a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9v.09a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        </button>
         <button class="icona-bottone" id="bottone-opzioni-voce" title="Opzioni di lettura" aria-label="Opzioni di lettura">
           <svg viewBox="0 0 24 24"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></svg>
         </button>
@@ -1296,6 +1299,11 @@ select:focus-visible,
     <div class="riga-impostazione">
       <label for="slider-volume">Volume: <span id="volume-etichetta">100%</span></label>
       <input type="range" id="slider-volume" min="0" max="100" step="5" value="100">
+    </div>
+
+    <div class="riga-impostazione">
+      <label for="slider-velocita-imp">Velocità di lettura: <span id="velocita-imp-etichetta">1.0x</span></label>
+      <input type="range" id="slider-velocita-imp" min="0.5" max="4" step="0.1" value="1">
     </div>
 
     <div class="riga-impostazione" id="riga-tono">
@@ -2916,6 +2924,26 @@ async function analizzaMOBI(file) {
    suono: il risultato è comprensibile, con accento. */
 const FORNITORI_NEURALI = [
   {
+    /* Piper con voce italiana autentica. Le voci .onnx italiane
+       esistono già pubblicate: il passaggio critico non è il formato
+       del modello ma la fonemizzazione, perché Piper accetta fonemi e
+       non testo. vits-web è la libreria a monte di quella che aveva
+       fallito con un difetto di caricamento del runtime; incorpora
+       espeak-ng compilato in WebAssembly, quindi risolve da sé quel
+       passaggio. Se funziona, è la sola voce italiana vera
+       disponibile. */
+    nome: "Piper · voce italiana Riccardo",
+    tipo: "vits",
+    urlModulo: "https://cdn.jsdelivr.net/npm/@diffusionstudio/vits-web@1.0.3/+esm",
+    modelli: ["it_IT-riccardo-x_low"],
+  },
+  {
+    nome: "Piper · voce italiana Paola",
+    tipo: "vits",
+    urlModulo: "https://cdn.jsdelivr.net/npm/@diffusionstudio/vits-web@1.0.3/+esm",
+    modelli: ["it_IT-paola-medium"],
+  },
+  {
     nome: "Modello spagnolo su testo italiano",
     tipo: "transformers",
     urlModulo: "https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.5.1",
@@ -3047,7 +3075,33 @@ const MotoreNeurale = (() => {
                 }
               };
 
-              if (fornitore.tipo === "kokoro") {
+              if (fornitore.tipo === "vits") {
+                // vits-web non espone una pipeline: si limita a
+                // scaricare la voce e a restituire direttamente un Blob
+                // audio già pronto alla riproduzione.
+                if (typeof modulo.download === "function") {
+                  const gia = typeof modulo.stored === "function" ? await modulo.stored() : [];
+                  if (!gia.includes(idModello)) {
+                    await modulo.download(idModello, (progresso) => {
+                      if (alProgresso && progresso && progresso.total) {
+                        alProgresso(Math.round((progresso.loaded / progresso.total) * 100), idModello);
+                      }
+                    });
+                  }
+                }
+                if (typeof modulo.predict !== "function") {
+                  throw new Error("Il modulo non espone la funzione predict.");
+                }
+                // Sintesi di verifica: senza questa prova un guasto
+                // emergerebbe solo alla prima frase del libro, quando
+                // ripiegare su un altro fornitore non è più possibile.
+                const prova = await modulo.predict({ text: "prova", voiceId: idModello });
+                if (!prova) throw new Error("La sintesi di verifica non ha prodotto audio.");
+                sintetizzatore = {
+                  tipo: "vits",
+                  genera: (testo) => modulo.predict({ text: testo, voiceId: idModello }),
+                };
+              } else if (fornitore.tipo === "kokoro") {
                 const Costruttore = modulo.KokoroTTS || (modulo.default && modulo.default.KokoroTTS);
                 if (!Costruttore) throw new Error("Il modulo non espone KokoroTTS.");
                 // q8 riduce il modello da circa 326 MB a circa 86 MB
@@ -3857,7 +3911,7 @@ const ControllerTTS = (() => {
   const AMPIEZZA_FINESTRA = 60;
   const MARGINE_RICOSTRUZIONE = 15;
   const INTERVALLO_MINIMO_SALVATAGGIO_MS = 3000;
-  const VERSIONE_APP = "5.4";
+  const VERSIONE_APP = "5.6";
   const DATA_VERSIONE_APP = "17 settembre 2026";
 
   const DIMENSIONI_CARATTERE = [0.88, 0.96, 1.04, 1.14, 1.26, 1.4, 1.56];
@@ -4791,7 +4845,7 @@ const ControllerTTS = (() => {
 
   const DESCRIZIONI_MOTORE = {
     webspeech: "Voci del sistema operativo, comprese quelle neurali di Google se installate. A oggi è la scelta migliore per l'italiano: pronuncia corretta, nessuno scaricamento, nessuna attesa. Non è però equalizzabile, perché il parlato va direttamente all'uscita audio senza passare per l'applicazione.",
-    neurale: "ATTENZIONE: non è una voce italiana. Nessun modello neurale italiano è oggi eseguibile in un browser — l'italiano manca dalla famiglia MMS e le voci italiane di Kokoro non sono raggiungibili da JavaScript. Questo motore usa un modello spagnolo che legge il testo italiano: comprensibile ma con accento marcato. Il vantaggio è che funziona senza rete e può essere equalizzato. Per l'italiano corretto resta preferibile la sintesi di sistema.",
+    neurale: "SPERIMENTALE, può rallentare o bloccare l'applicazione su dispositivi lenti; in tal caso chiudi e riapri il browser. Prova nell'ordine una voce italiana Piper e, se non disponibile, ripiega su modelli di lingue affini. Nessun modello neurale italiano è oggi eseguibile in un browser — l'italiano manca dalla famiglia MMS e le voci italiane di Kokoro non sono raggiungibili da JavaScript. Se la voce italiana non risulta disponibile, un modello spagnolo legge il testo italiano: comprensibile ma con accento. Funziona senza rete e può essere equalizzato. Nel dubbio, la sintesi di sistema resta la scelta più sicura.",
   };
 
   function aggiornaDescrizioneMotore(idMotore) {
@@ -5139,6 +5193,8 @@ const ControllerTTS = (() => {
       const valore = Math.min(4, Math.max(0.5, Math.round(v * 10) / 10));
       velocitaSlider.value = valore;
       velocitaEtichetta.textContent = `${valore.toFixed(1)}x`;
+      el("slider-velocita-imp").value = valore;
+      el("velocita-imp-etichetta").textContent = `${valore.toFixed(1)}x`;
       ControllerTTS.impostaVelocita(valore);
       LibreriaDB.impostaImpostazione("velocita", valore);
     }
@@ -5251,6 +5307,16 @@ const ControllerTTS = (() => {
       Array.from(document.querySelectorAll(`#${gruppo.contenitorePreset} button`)).forEach((b) =>
         b.addEventListener("click", () => salvaEqualizzatore(PRESET_EQUALIZZATORE[b.dataset.preset]))
       );
+    });
+
+    // La velocità compare sia nel dock di lettura sia nelle impostazioni:
+    // i due controlli riflettono lo stesso valore e vanno tenuti allineati.
+    const sliderVelocitaImp = el("slider-velocita-imp");
+    sliderVelocitaImp.addEventListener("input", () => applicaVelocita(parseFloat(sliderVelocitaImp.value)));
+
+    collegaCassetto("bottone-impostazioni-lettura", "sfondo-cassetto-impostazioni", "cassetto-impostazioni", () => {
+      aggiornaStatisticheLibro();
+      aggiornaInterfacciaEqualizzatore();
     });
 
     const sliderVolume = el("slider-volume");
@@ -5393,7 +5459,18 @@ const ControllerTTS = (() => {
     el("slider-tono-voce").value = tonoSalvato;
     el("tono-voce-etichetta").textContent = tonoSalvato.toFixed(1);
 
-    const motoreSalvato = await LibreriaDB.ottieniImpostazione("motore", "webspeech");
+    /* All'avvio si parte SEMPRE dalla sintesi di sistema, anche se
+       l'ultima volta era selezionato il motore neurale.
+
+       Motivo: l'inferenza neurale può bloccare il dispositivo al punto
+       che nemmeno il ricaricamento della pagina viene eseguito. Se il
+       motore venisse ripristinato automaticamente, l'applicazione si
+       bloccherebbe di nuovo ad ogni apertura e non ci sarebbe modo di
+       uscirne dall'interno: un guasto temporaneo diventerebbe
+       permanente. Il motore neurale va quindi riselezionato a mano ad
+       ogni sessione, che è un piccolo fastidio in cambio della certezza
+       di poter sempre aprire l'applicazione e leggere. */
+    const motoreSalvato = "webspeech";
     ControllerTTS.impostaMotore(motoreSalvato);
     el("selettore-motore").value = motoreSalvato;
     if (motoreSalvato === "neurale") {
