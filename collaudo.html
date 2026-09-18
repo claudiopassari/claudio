@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CLaudio — collaudo voce neurale</title>
+<style>
+  :root { color-scheme: light dark; }
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    max-width: 44rem; margin: 0 auto; padding: 16px;
+    line-height: 1.55; background: #F2F3F5; color: #1C1E22;
+  }
+  @media (prefers-color-scheme: dark) { body { background: #17191C; color: #E6E8EC; } }
+  h1 { font-size: 1.25rem; margin: 0 0 4px 0; }
+  p.sottotitolo { margin: 0 0 18px 0; font-size: 0.88rem; opacity: 0.75; }
+  button {
+    width: 100%; padding: 14px; font-size: 1rem; border: none; border-radius: 8px;
+    background: #1F4B4A; color: #fff; margin-bottom: 12px;
+  }
+  button:disabled { opacity: 0.5; }
+  #registro {
+    white-space: pre-wrap; font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 0.76rem; background: rgba(127,127,127,0.12);
+    padding: 12px; border-radius: 8px; min-height: 12rem;
+  }
+  .ok { color: #1a7f37; font-weight: 600; }
+  .ko { color: #b42318; font-weight: 600; }
+  audio { width: 100%; margin-bottom: 12px; }
+</style>
+</head>
+<body>
+
+<h1>Collaudo della voce neurale</h1>
+<p class="sottotitolo">Pagina isolata dall'applicazione. Prova una combinazione per volta e riporta l'esito esatto di ciascuna, così da individuare con certezza dove si interrompe la catena.</p>
+
+<button id="avvia">Avvia il collaudo</button>
+<audio id="lettore" controls hidden></audio>
+<div id="registro">In attesa.</div>
+
+<script type="module">
+const registro = document.getElementById("registro");
+const bottone = document.getElementById("avvia");
+const lettore = document.getElementById("lettore");
+
+function scrivi(testo, classe) {
+  const riga = classe ? `<span class="${classe}">${testo}</span>` : testo;
+  registro.innerHTML += (registro.innerHTML === "In attesa." ? "" : "\n") + riga;
+  if (registro.innerHTML.startsWith("In attesa.")) {
+    registro.innerHTML = registro.innerHTML.replace("In attesa.", "");
+  }
+}
+
+const FRASE = "Questa è una prova della voce neurale italiana.";
+
+const COMBINAZIONI = [
+  { nome: "Transformers.js 3 + MMS ita", url: "https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.5.1", modello: "Xenova/mms-tts-ita" },
+  { nome: "Transformers.js 3 + MMS ita (onnx-community)", url: "https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.5.1", modello: "onnx-community/mms-tts-ita-ONNX" },
+  { nome: "Transformers.js 2 + MMS ita", url: "https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2", modello: "Xenova/mms-tts-ita" },
+  { nome: "Transformers.js 3 + SpeechT5 (inglese)", url: "https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.5.1", modello: "Xenova/speecht5_tts", voce: "https://huggingface.co/datasets/Xenova/transformers.js-docs/resolve/main/speaker_embeddings.bin" },
+];
+
+function componiWav(campioni, frequenza) {
+  const n = campioni.length;
+  const buffer = new ArrayBuffer(44 + n * 2);
+  const v = new DataView(buffer);
+  const t = (p, s) => { for (let i = 0; i < s.length; i++) v.setUint8(p + i, s.charCodeAt(i)); };
+  t(0, "RIFF"); v.setUint32(4, 36 + n * 2, true); t(8, "WAVE"); t(12, "fmt ");
+  v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+  v.setUint32(24, frequenza, true); v.setUint32(28, frequenza * 2, true);
+  v.setUint16(32, 2, true); v.setUint16(34, 16, true); t(36, "data");
+  v.setUint32(40, n * 2, true);
+  let p = 44;
+  for (let i = 0; i < n; i++) {
+    const x = Math.max(-1, Math.min(1, campioni[i]));
+    v.setInt16(p, x < 0 ? x * 0x8000 : x * 0x7fff, true);
+    p += 2;
+  }
+  return new Blob([buffer], { type: "audio/wav" });
+}
+
+async function collauda() {
+  bottone.disabled = true;
+  registro.innerHTML = "";
+
+  scrivi("--- Contesto ---");
+  scrivi(`Origine: ${location.origin}`);
+  scrivi(`Contesto sicuro: ${window.isSecureContext}`);
+  scrivi(`Cross-origin isolated: ${typeof crossOriginIsolated !== "undefined" ? crossOriginIsolated : "non definito"}`);
+  scrivi(`SharedArrayBuffer: ${typeof SharedArrayBuffer !== "undefined"}`);
+  scrivi(`WebAssembly: ${typeof WebAssembly === "object"}`);
+  scrivi(`WebGPU: ${!!navigator.gpu}`);
+  scrivi("");
+
+  for (const combinazione of COMBINAZIONI) {
+    scrivi(`--- ${combinazione.nome} ---`);
+    try {
+      scrivi("Caricamento libreria…");
+      const modulo = await import(combinazione.url);
+      scrivi("Libreria caricata.", "ok");
+
+      if (modulo.env) {
+        modulo.env.allowLocalModels = false;
+        modulo.env.useBrowserCache = true;
+        if (modulo.env.backends?.onnx?.wasm) {
+          modulo.env.backends.onnx.wasm.numThreads = 1;
+          modulo.env.backends.onnx.wasm.proxy = false;
+          scrivi("Backend forzato a thread singolo.");
+        }
+      }
+
+      scrivi("Caricamento modello (può richiedere minuti al primo tentativo)…");
+      const sintetizzatore = await modulo.pipeline("text-to-speech", combinazione.modello, {
+        dtype: "fp32",
+        device: "wasm",
+        progress_callback: (e) => {
+          if (e?.status === "progress" && e.total) {
+            const percentuale = Math.round((e.loaded / e.total) * 100);
+            if (percentuale % 25 === 0) scrivi(`  ${e.file}: ${percentuale}%`);
+          }
+        },
+      });
+      scrivi("Modello caricato.", "ok");
+
+      scrivi("Sintesi in corso…");
+      const uscita = await sintetizzatore(FRASE, combinazione.voce ? { speaker_embeddings: combinazione.voce } : undefined);
+      scrivi(`Sintesi completata: ${uscita.audio.length} campioni a ${uscita.sampling_rate} Hz.`, "ok");
+
+      const blob = componiWav(uscita.audio, uscita.sampling_rate);
+      lettore.src = URL.createObjectURL(blob);
+      lettore.hidden = false;
+      await lettore.play().catch(() => scrivi("Riproduzione automatica bloccata: premi play qui sopra."));
+
+      scrivi("");
+      scrivi(`RIUSCITO con: ${combinazione.nome}`, "ok");
+      scrivi("Riferisci questo nome: è la combinazione da adottare.");
+      bottone.disabled = false;
+      return;
+    } catch (errore) {
+      scrivi(`Fallito: ${errore.name}: ${errore.message}`, "ko");
+      scrivi("");
+    }
+  }
+
+  scrivi("Nessuna combinazione ha funzionato.", "ko");
+  scrivi("Copia l'intero contenuto di questo riquadro e riportalo.");
+  bottone.disabled = false;
+}
+
+bottone.addEventListener("click", collauda);
+</script>
+
+</body>
+</html>

@@ -2857,88 +2857,108 @@ async function analizzaMOBI(file) {
 
 /* ===== js/tts-neurale.js ===== */
 /* =========================================================
-   tts-neurale.js — motori di sintesi neurale
+   tts-neurale.js — sintesi neurale in locale
 
-   DUE MOTORI, provati indipendentemente, così che il guasto di uno
-   non precluda l'altro:
+   CAUSA DEI FALLIMENTI PRECEDENTI (diagnosi)
 
-   1. KOKORO (principale). Modello da 82 milioni di parametri con voci
-      italiane dedicate (Sara, Nicola), eseguito localmente via
-      Transformers.js. È mantenuto dalla stessa organizzazione che
-      cura Transformers.js, quindi la configurazione di
-      onnxruntime-web è gestita internamente e coerente.
+   L'errore osservato — "no available backend found. ERR: [wasm]" —
+   non dipendeva dal modello né dalla rete. onnxruntime-web tenta per
+   impostazione predefinita il backend WebAssembly multi-thread, che
+   richiede SharedArrayBuffer; SharedArrayBuffer è disponibile solo in
+   pagine "cross-origin isolated", condizione che richiede le
+   intestazioni HTTP Cross-Origin-Opener-Policy e
+   Cross-Origin-Embedder-Policy. GitHub Pages serve file statici e non
+   consente di impostare intestazioni personalizzate: quella
+   condizione non è quindi raggiungibile, e il backend multi-thread
+   fallisce sempre. Il fallimento si presenta come errore di
+   caricamento di un modulo, mascherando la causa reale.
 
-   2. PIPER (alternativa). Nella versione pubblicata presenta un
-      difetto accertato: richiede a onnxruntime-web 1.18.0 su cdnjs il
-      file "ort-wasm-simd-threaded.mjs", che a quella versione non
-      esiste (i file .mjs compaiono solo dalle versioni successive).
-      L'errore osservato — "no available backend found ... Failed to
-      fetch dynamically imported module" — deriva precisamente da qui.
-      Si tenta quindi di reindirizzare onnxruntime-web a una versione
-      che contenga davvero quei file, prima di caricare la libreria.
-      Rimedio non garantito: agisce su configurazione interna di
-      terze parti.
+   RIMEDIO: imporre numThreads = 1 PRIMA di qualsiasi caricamento,
+   così che venga scelto il backend a thread singolo, che non richiede
+   SharedArrayBuffer e funziona su hosting statico.
 
-   Entrambi restituiscono un Blob audio, che il controller riproduce
-   come qualsiasi altra sorgente.
+   Due ulteriori accorgimenti, entrambi cause frequenti di guasto su
+   hosting statico:
+   - allowLocalModels = false: altrimenti la libreria cerca i modelli
+     in una cartella locale inesistente prima di rivolgersi alla rete,
+     e fallisce con un errore fuorviante.
+   - proxy = false: l'esecuzione in un worker separato aggiunge un
+     punto di rottura senza benefici determinanti su questo carico.
+
+   STRATEGIA: si tentano più fornitori in sequenza. Il primo che
+   produce audio vince; gli errori di quelli scartati vengono raccolti
+   e mostrati, così un guasto resta diagnosticabile invece di
+   presentarsi come silenzio.
    ========================================================= */
 
-const URL_MODULO_KOKORO = "https://esm.sh/kokoro-js@1.2.1";
-const URL_MODULO_PIPER = "https://esm.sh/@mintplex-labs/piper-tts-web@1.0.5";
-const MODELLO_KOKORO = "onnx-community/Kokoro-82M-v1.0-ONNX";
-
-/* Versione di onnxruntime-web che su cdnjs espone effettivamente i
-   file .mjs richiesti dal caricatore WebAssembly. */
-const BASE_ORT_VALIDA = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.19.2/dist/";
-
-const VOCI_KOKORO = [
-  { id: "if_sara", nome: "Sara (femminile, italiano)" },
-  { id: "im_nicola", nome: "Nicola (maschile, italiano)" },
+/* Combinazioni provate in ordine. Si variano sia la libreria sia
+   l'identificativo del modello: un deposito può essere stato
+   rinominato o non esistere, e in tal caso conviene proseguire invece
+   di arrendersi. Il modello MMS è un VITS con tokenizzatore
+   incorporato, quindi non richiede espeak-ng né altri fonemizzatori
+   esterni, che sono il punto più fragile di Piper e Kokoro. */
+const FORNITORI_NEURALI = [
+  {
+    nome: "Transformers.js 3 · MMS italiano",
+    urlModulo: "https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.5.1",
+    modelli: ["Xenova/mms-tts-ita", "onnx-community/mms-tts-ita-ONNX"],
+  },
+  {
+    nome: "Transformers.js 2 · MMS italiano",
+    urlModulo: "https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2",
+    modelli: ["Xenova/mms-tts-ita"],
+  },
+  {
+    nome: "Transformers.js 3 · SpeechT5",
+    urlModulo: "https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.5.1",
+    modelli: ["Xenova/speecht5_tts"],
+    // SpeechT5 è addestrato sull'inglese: pronuncia l'italiano con
+    // accento marcato. Resta solo come ultima rete di sicurezza, per
+    // distinguere "nessun modello italiano raggiungibile" da
+    // "l'infrastruttura neurale non funziona affatto".
+    richiedeVoce: "https://huggingface.co/datasets/Xenova/transformers.js-docs/resolve/main/speaker_embeddings.bin",
+  },
 ];
 
-const VOCI_PIPER = [
-  { id: "it_IT-riccardo-x_low", nome: "Riccardo (leggera)", dimensione: "~20 MB" },
-  { id: "it_IT-paola-medium", nome: "Paola (media)", dimensione: "~63 MB" },
+const VOCI_NEURALI = [
+  { id: "auto", nome: "Voce italiana (automatica)" },
 ];
 
 const MotoreNeurale = (() => {
-  let istanzaKokoro = null;
-  let moduloPiper = null;
+  let pipelineAttiva = null;
+  let fornitoreAttivo = null;
   let caricamentoInCorso = null;
+  let diarioCaricamento = [];
 
-  /* ---------- Conversione in Blob audio ----------
+  function annota(testo) {
+    diarioCaricamento.push(testo);
+    if (diarioCaricamento.length > 40) diarioCaricamento.shift();
+  }
 
-     Transformers.js restituisce un oggetto RawAudio la cui interfaccia
-     è variata fra le versioni: si tentano in ordine i metodi noti e,
-     come ultima risorsa, si compone il file WAV a mano dai campioni
-     grezzi. In questo modo un cambiamento dell'API a monte non rende
-     l'applicazione inutilizzabile. */
+  function ottieniDiario() { return diarioCaricamento.join("\n"); }
+
+  /* ---------- Composizione del file WAV ---------- */
 
   function componiWav(campioni, frequenza) {
     const lunghezza = campioni.length;
     const buffer = new ArrayBuffer(44 + lunghezza * 2);
     const vista = new DataView(buffer);
-
-    const scriviTesto = (posizione, testo) => {
+    const scrivi = (posizione, testo) => {
       for (let i = 0; i < testo.length; i++) vista.setUint8(posizione + i, testo.charCodeAt(i));
     };
-
-    scriviTesto(0, "RIFF");
+    scrivi(0, "RIFF");
     vista.setUint32(4, 36 + lunghezza * 2, true);
-    scriviTesto(8, "WAVE");
-    scriviTesto(12, "fmt ");
-    vista.setUint32(16, 16, true);          // dimensione del blocco fmt
-    vista.setUint16(20, 1, true);           // PCM non compresso
-    vista.setUint16(22, 1, true);           // monofonico
+    scrivi(8, "WAVE");
+    scrivi(12, "fmt ");
+    vista.setUint32(16, 16, true);
+    vista.setUint16(20, 1, true);
+    vista.setUint16(22, 1, true);
     vista.setUint32(24, frequenza, true);
     vista.setUint32(28, frequenza * 2, true);
     vista.setUint16(32, 2, true);
-    vista.setUint16(34, 16, true);          // 16 bit per campione
-    scriviTesto(36, "data");
+    vista.setUint16(34, 16, true);
+    scrivi(36, "data");
     vista.setUint32(40, lunghezza * 2, true);
-
-    // I campioni arrivano in virgola mobile fra -1 e 1: si convertono
-    // in interi a 16 bit con saturazione, per evitare distorsioni.
     let posizione = 44;
     for (let i = 0; i < lunghezza; i++) {
       const valore = Math.max(-1, Math.min(1, campioni[i]));
@@ -2948,13 +2968,111 @@ const MotoreNeurale = (() => {
     return new Blob([buffer], { type: "audio/wav" });
   }
 
-  async function inBlob(audio) {
-    if (!audio) throw new Error("Nessun audio restituito dal modello.");
-    if (audio instanceof Blob) return audio;
-    if (typeof audio.toBlob === "function") return await audio.toBlob();
-    if (typeof audio.toWav === "function") return new Blob([audio.toWav()], { type: "audio/wav" });
-    if (audio.audio && audio.sampling_rate) return componiWav(audio.audio, audio.sampling_rate);
+  function inBlob(uscita) {
+    if (!uscita) throw new Error("Nessun audio restituito dal modello.");
+    if (uscita instanceof Blob) return uscita;
+    if (uscita.audio && uscita.sampling_rate) return componiWav(uscita.audio, uscita.sampling_rate);
+    if (typeof uscita.toBlob === "function") return uscita.toBlob();
     throw new Error("Formato audio non riconosciuto.");
+  }
+
+  /* ---------- Configurazione di onnxruntime ---------- */
+
+  function configuraAmbiente(modulo) {
+    const env = modulo.env;
+    if (!env) return;
+    try {
+      env.allowLocalModels = false;
+      env.useBrowserCache = true;
+      if (env.backends && env.backends.onnx && env.backends.onnx.wasm) {
+        const wasm = env.backends.onnx.wasm;
+        // Il punto decisivo: senza questa riga viene scelto il backend
+        // multi-thread, irraggiungibile su hosting statico.
+        wasm.numThreads = 1;
+        wasm.simd = true;
+        wasm.proxy = false;
+      }
+      annota("Ambiente configurato: thread singolo, modelli remoti, nessun proxy.");
+    } catch (errore) {
+      annota(`Configurazione ambiente parziale: ${errore.message || errore}`);
+    }
+  }
+
+  /* ---------- Caricamento con catena di ripieghi ---------- */
+
+  async function caricaPipeline(alProgresso) {
+    if (pipelineAttiva) return pipelineAttiva;
+    if (caricamentoInCorso) return await caricamentoInCorso;
+
+    caricamentoInCorso = (async () => {
+      const errori = [];
+      for (const fornitore of FORNITORI_NEURALI) {
+        try {
+          annota(`Tentativo con ${fornitore.nome}…`);
+          const modulo = await import(/* @vite-ignore */ fornitore.urlModulo);
+          configuraAmbiente(modulo);
+
+          const creaPipeline = modulo.pipeline || (modulo.default && modulo.default.pipeline);
+          if (typeof creaPipeline !== "function") {
+            throw new Error("Il modulo non espone la funzione pipeline.");
+          }
+
+          let sintetizzatore = null;
+          let ultimoErroreModello = null;
+          for (const idModello of fornitore.modelli) {
+            try {
+              annota(`  modello ${idModello}…`);
+              sintetizzatore = await creaPipeline("text-to-speech", idModello, {
+                dtype: "fp32",
+                device: "wasm",
+                progress_callback: (evento) => {
+                  if (!alProgresso || !evento) return;
+                  if (evento.status === "progress" && evento.total) {
+                    alProgresso(Math.round((evento.loaded / evento.total) * 100), evento.file || "");
+                  } else if (evento.status === "download") {
+                    alProgresso(null, evento.file || "");
+                  }
+                },
+              });
+              break;
+            } catch (erroreModello) {
+              ultimoErroreModello = erroreModello;
+              annota(`  modello ${idModello} non disponibile: ${erroreModello.message || erroreModello}`);
+            }
+          }
+          if (!sintetizzatore) throw ultimoErroreModello || new Error("Nessun modello caricabile.");
+
+          pipelineAttiva = sintetizzatore;
+          fornitoreAttivo = fornitore;
+          annota(`Riuscito con ${fornitore.nome}.`);
+          return pipelineAttiva;
+        } catch (errore) {
+          const messaggio = `${fornitore.nome}: ${errore.message || errore}`;
+          annota(`Non riuscito — ${messaggio}`);
+          errori.push(messaggio);
+        }
+      }
+      throw new Error(`Nessun fornitore disponibile.\n${errori.join("\n")}`);
+    })();
+
+    try {
+      return await caricamentoInCorso;
+    } finally {
+      caricamentoInCorso = null;
+    }
+  }
+
+  async function sintetizza(testo) {
+    const sintetizzatore = await caricaPipeline();
+    const opzioni = fornitoreAttivo && fornitoreAttivo.richiedeVoce
+      ? { speaker_embeddings: fornitoreAttivo.richiedeVoce }
+      : undefined;
+    const uscita = await sintetizzatore(testo, opzioni);
+    return inBlob(uscita);
+  }
+
+  async function scaricaModello(idMotore, idVoce, alProgresso) {
+    await caricaPipeline(alProgresso);
   }
 
   /* ---------- Diagnostica ---------- */
@@ -2971,148 +3089,52 @@ const MotoreNeurale = (() => {
     esiti.push({
       nome: "WebAssembly",
       esito: typeof WebAssembly === "object",
-      nota: typeof WebAssembly === "object" ? "Supportato." : "Non supportato da questo browser.",
+      nota: typeof WebAssembly === "object" ? "Supportato." : "Non supportato.",
     });
 
-    // Kokoro conserva il modello nella Cache API, non in OPFS: è
-    // disponibile in ogni contesto sicuro, incluso GitHub Pages.
+    // Informativo, non bloccante: la sua assenza è la ragione per cui
+    // si impone il backend a thread singolo, non un ostacolo.
+    const isolata = typeof crossOriginIsolated !== "undefined" && crossOriginIsolated;
+    esiti.push({
+      nome: "Multi-thread (facoltativo)",
+      esito: isolata,
+      facoltativo: true,
+      nota: isolata
+        ? "Disponibile: sintesi più rapida."
+        : "Non disponibile su hosting statico: si usa il backend a thread singolo, più lento ma funzionante. Non è un errore.",
+    });
+
     esiti.push({
       nome: "Archivio modelli (Cache API)",
       esito: "caches" in window,
-      nota: "caches" in window ? "Il modello resta memorizzato dopo il primo scaricamento." : "Non disponibile: il modello andrebbe riscaricato ogni volta.",
+      nota: "caches" in window ? "Il modello resta memorizzato dopo il primo scaricamento." : "Il modello andrebbe riscaricato ogni volta.",
     });
-
-    let workerDisponibile = false;
-    let notaWorker = "";
-    try {
-      const sorgente = URL.createObjectURL(new Blob(["self.close();"], { type: "text/javascript" }));
-      new Worker(sorgente).terminate();
-      URL.revokeObjectURL(sorgente);
-      workerDisponibile = true;
-      notaWorker = "Disponibile.";
-    } catch (errore) {
-      notaWorker = `Non disponibile (${errore.name || errore}). La sintesi funziona comunque, ma bloccherà brevemente l'interfaccia.`;
-    }
-    // Non è un requisito bloccante: incide sulla fluidità, non sul funzionamento.
-    esiti.push({ nome: "Web Worker (facoltativo)", esito: workerDisponibile, nota: notaWorker, facoltativo: true });
 
     let rete = false;
     try {
-      await fetch("https://esm.sh/", { method: "HEAD", mode: "no-cors" });
+      await fetch("https://cdn.jsdelivr.net/npm/", { method: "HEAD", mode: "no-cors" });
       rete = true;
-    } catch (e) { /* non raggiungibile */ }
+    } catch (e) { /* irraggiungibile */ }
     esiti.push({
       nome: "Accesso alla rete",
       esito: rete,
-      nota: rete ? "Raggiungibile." : "Necessaria al primo scaricamento del modello.",
+      nota: rete ? "Raggiungibile." : "Necessaria al primo scaricamento.",
     });
 
-    const utilizzabile = esiti.every((e) => e.esito || e.facoltativo);
-    return { esiti, utilizzabile };
+    return { esiti, utilizzabile: esiti.every((e) => e.esito || e.facoltativo) };
   }
 
-  /* ---------- Kokoro ---------- */
-
-  async function caricaKokoro(alProgresso) {
-    if (istanzaKokoro) return istanzaKokoro;
-    if (caricamentoInCorso) return await caricamentoInCorso;
-
-    caricamentoInCorso = (async () => {
-      const modulo = await import(/* @vite-ignore */ URL_MODULO_KOKORO);
-      const Costruttore = modulo.KokoroTTS || (modulo.default && modulo.default.KokoroTTS);
-      if (!Costruttore) throw new Error("Il modulo Kokoro non espone l'interfaccia attesa.");
-
-      istanzaKokoro = await Costruttore.from_pretrained(MODELLO_KOKORO, {
-        // q8 riduce il modello da circa 326 MB a circa 86 MB senza
-        // differenze udibili apprezzabili: su un telefono è la scelta
-        // sensata, anche per i tempi di scaricamento.
-        dtype: "q8",
-        device: "wasm",
-        progress_callback: (evento) => {
-          if (!alProgresso || !evento) return;
-          if (evento.status === "progress" && evento.total) {
-            alProgresso(Math.round((evento.loaded / evento.total) * 100), evento.file || "");
-          } else if (evento.status === "done") {
-            alProgresso(100, evento.file || "");
-          }
-        },
-      });
-      return istanzaKokoro;
-    })();
-
-    try {
-      return await caricamentoInCorso;
-    } finally {
-      caricamentoInCorso = null;
-    }
-  }
-
-  async function sintetizzaKokoro(testo, idVoce) {
-    const tts = await caricaKokoro();
-    const audio = await tts.generate(testo, { voice: idVoce || "if_sara" });
-    return await inBlob(audio);
-  }
-
-  /* ---------- Piper ---------- */
-
-  async function caricaPiper() {
-    if (moduloPiper) return moduloPiper;
-
-    // Tentativo di rimedio al difetto descritto in testa al file: si
-    // predispone una configurazione globale di onnxruntime-web che
-    // punti a file realmente esistenti, sperando che la libreria la
-    // rilevi invece di imporre la propria.
-    try {
-      if (!window.ort) window.ort = {};
-      window.ort.env = window.ort.env || {};
-      window.ort.env.wasm = window.ort.env.wasm || {};
-      window.ort.env.wasm.wasmPaths = BASE_ORT_VALIDA;
-      window.ort.env.wasm.numThreads = 1;
-    } catch (e) { /* configurazione non applicabile */ }
-
-    moduloPiper = await import(/* @vite-ignore */ URL_MODULO_PIPER);
-    return moduloPiper;
-  }
-
-  async function sintetizzaPiper(testo, idVoce) {
-    const modulo = await caricaPiper();
-    const risultato = await modulo.predict({ text: testo, voiceId: idVoce });
-    return await inBlob(risultato);
-  }
-
-  /* ---------- Interfaccia comune ---------- */
-
-  async function scaricaModello(idMotore, idVoce, alProgresso) {
-    if (idMotore === "kokoro") {
-      await caricaKokoro(alProgresso);
-      return;
-    }
-    const modulo = await caricaPiper();
-    if (typeof modulo.download !== "function") {
-      throw new Error("La libreria non espone una funzione di scaricamento.");
-    }
-    await modulo.download(idVoce, (progresso) => {
-      if (!alProgresso) return;
-      alProgresso(progresso && progresso.total ? Math.round((progresso.loaded / progresso.total) * 100) : null, "");
-    });
-  }
-
-  async function sintetizza(testo, idVoce, idMotore) {
-    if (idMotore === "kokoro") return await sintetizzaKokoro(testo, idVoce);
-    return await sintetizzaPiper(testo, idVoce);
-  }
-
-  function vociDi(idMotore) {
-    return idMotore === "kokoro" ? VOCI_KOKORO : VOCI_PIPER;
-  }
+  function vociDi() { return VOCI_NEURALI; }
+  function nomeFornitoreAttivo() { return fornitoreAttivo ? fornitoreAttivo.nome : null; }
 
   return {
     verificaRequisiti,
     scaricaModello,
     sintetizza,
     vociDi,
-    vociKokoro: VOCI_KOKORO,
-    vociPiper: VOCI_PIPER,
+    vociNeurali: VOCI_NEURALI,
+    ottieniDiario,
+    nomeFornitoreAttivo,
   };
 })();
 
@@ -3164,23 +3186,13 @@ const REGISTRO_MOTORI = {
       return window.speechSynthesis ? window.speechSynthesis.getVoices() : [];
     },
   },
-  kokoro: {
-    id: "kokoro",
-    nome: "Kokoro (neurale, voci italiane)",
+  neurale: {
+    id: "neurale",
+    nome: "Voce neurale italiana (in locale)",
     tipo: "audio",
     ottieniVoci() {
-      return (typeof MotoreNeurale !== "undefined" ? MotoreNeurale.vociKokoro : []).map((v) => ({
+      return (typeof MotoreNeurale !== "undefined" ? MotoreNeurale.vociNeurali : []).map((v) => ({
         voiceURI: v.id, name: v.nome, lang: "it-IT",
-      }));
-    },
-  },
-  piper: {
-    id: "piper",
-    nome: "Piper (neurale, sperimentale)",
-    tipo: "audio",
-    ottieniVoci() {
-      return (typeof MotoreNeurale !== "undefined" ? MotoreNeurale.vociPiper : []).map((v) => ({
-        voiceURI: v.id, name: `${v.nome} ${v.dimensione}`, lang: "it-IT",
       }));
     },
   },
@@ -3587,7 +3599,7 @@ const ControllerTTS = (() => {
   async function generaAudioUnita(indice) {
     const testo = frasi[indice];
     if (!testo) return null;
-    const blob = await MotoreNeurale.sintetizza(testo, voceSelezionataURI, motoreCorrente.id);
+    const blob = await MotoreNeurale.sintetizza(testo);
     return URL.createObjectURL(blob);
   }
 
@@ -3787,7 +3799,7 @@ const ControllerTTS = (() => {
   const AMPIEZZA_FINESTRA = 60;
   const MARGINE_RICOSTRUZIONE = 15;
   const INTERVALLO_MINIMO_SALVATAGGIO_MS = 3000;
-  const VERSIONE_APP = "5.0";
+  const VERSIONE_APP = "5.1";
   const DATA_VERSIONE_APP = "17 settembre 2026";
 
   const DIMENSIONI_CARATTERE = [0.88, 0.96, 1.04, 1.14, 1.26, 1.4, 1.56];
@@ -4721,8 +4733,7 @@ const ControllerTTS = (() => {
 
   const DESCRIZIONI_MOTORE = {
     webspeech: "Voci del sistema operativo. Immediate e senza scaricamenti, ma il timbro dipende dal dispositivo e non è equalizzabile.",
-    kokoro: "Modello neurale da 82 milioni di parametri con voci italiane dedicate. Circa 86 MB da scaricare una sola volta; qualità nettamente superiore e compatibile con l'equalizzatore.",
-    piper: "Motore neurale leggero. Sperimentale: la versione pubblicata della libreria presenta un difetto noto di caricamento, quindi potrebbe non funzionare.",
+    neurale: "Modello vocale italiano eseguito interamente sul dispositivo. Circa 40 MB da scaricare una sola volta, poi funziona anche senza rete. Compatibile con l'equalizzatore. La prima frase richiede qualche secondo, le successive sono più rapide.",
   };
 
   function aggiornaDescrizioneMotore(idMotore) {
@@ -4909,9 +4920,8 @@ const ControllerTTS = (() => {
     const stato = el("stato-scaricamento-piper");
     const bottone = el("bottone-scarica-voce");
     bottone.disabled = true;
-    stato.textContent = idMotore === "kokoro"
-      ? "Scaricamento del modello (circa 86 MB al primo utilizzo)…"
-      : "Avvio dello scaricamento…";
+    stato.style.whiteSpace = "normal";
+    stato.textContent = "Scaricamento del modello vocale (circa 40 MB, una sola volta)…";
     try {
       await MotoreNeurale.scaricaModello(idMotore, idVoce, (percentuale, file) => {
         const nome = file ? ` (${String(file).split("/").pop()})` : "";
@@ -4920,9 +4930,11 @@ const ControllerTTS = (() => {
           : `Scaricamento: ${percentuale}%${nome}`;
       });
       ControllerTTS.impostaVoce(idVoce);
-      stato.textContent = "Modello pronto. Resta memorizzato per gli utilizzi successivi.";
+      const fornitore = MotoreNeurale.nomeFornitoreAttivo();
+      stato.textContent = `Modello pronto${fornitore ? ` (${fornitore})` : ""}. Resta memorizzato per gli utilizzi successivi.`;
     } catch (errore) {
-      stato.textContent = `Non riuscito: ${errore.message || errore}`;
+      stato.textContent = `Non riuscito: ${errore.message || errore}\n\nDettaglio dei tentativi:\n${MotoreNeurale.ottieniDiario()}`;
+      stato.style.whiteSpace = "pre-wrap";
     } finally {
       bottone.disabled = false;
     }
@@ -4966,7 +4978,7 @@ const ControllerTTS = (() => {
       ControllerTTS.interrompi();
       ControllerTTS.impostaMotore(idMotore);
       await LibreriaDB.impostaImpostazione("motore", idMotore);
-      const neurale = idMotore === "kokoro" || idMotore === "piper";
+      const neurale = idMotore === "neurale";
       el("sezione-piper").hidden = !neurale;
       el("riga-tono").hidden = neurale; // il tono è proprietà del modello
       aggiornaDescrizioneMotore(idMotore);
@@ -5311,7 +5323,7 @@ const ControllerTTS = (() => {
     const motoreSalvato = await LibreriaDB.ottieniImpostazione("motore", "webspeech");
     ControllerTTS.impostaMotore(motoreSalvato);
     el("selettore-motore").value = motoreSalvato;
-    if (motoreSalvato === "kokoro" || motoreSalvato === "piper") {
+    if (motoreSalvato === "neurale") {
       el("sezione-piper").hidden = false;
       el("riga-tono").hidden = true;
       popolaVociNeurali(motoreSalvato);
