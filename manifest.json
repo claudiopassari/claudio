@@ -1,6 +1,6 @@
 {
-  "name": "CLaudio — Audio Converter Library",
-  "short_name": "CLaudio",
+  "name": "CL-audio — Audio Library Converter",
+  "short_name": "CL-audio",
   "description": "Lettore di PDF, EPUB, MOBI, AZW3 e TXT con sintesi vocale, equalizzatore, segnalibri e libreria locale.",
   "start_url": "./",
   "scope": "./",

@@ -29,7 +29,7 @@
    la versione precedente dalla cache.
    ========================================================= */
 
-const NOME_CACHE = "claudio-v6.6";
+const NOME_CACHE = "claudio-v6.7";
 
 const GUSCIO_APPLICAZIONE = [
   "./",
@@ -96,8 +96,21 @@ self.addEventListener("fetch", (evento) => {
 
   if (indirizzo.origin !== self.location.origin) return;
 
+  /* cache: "no-cache" impone al browser di verificare col server prima
+     di usare una copia memorizzata. È la correzione del blocco su una
+     versione vecchia: GitHub Pages dichiara che le pagine si possono
+     riusare per 10 minuti, e una semplice fetch() rispettava quella
+     dichiarazione restituendo la copia precedente senza interrogare il
+     server — la strategia "rete per prima" di fatto non raggiungeva la
+     rete. Con la verifica, se il file non è cambiato il server risponde
+     con un breve "non modificato", quindi il costo resta minimo. */
+  const richiestaVerificata = new Request(richiesta.url, {
+    cache: "no-cache",
+    credentials: "same-origin",
+  });
+
   evento.respondWith(
-    fetch(richiesta)
+    fetch(richiestaVerificata)
       .then((risposta) => {
         if (risposta && risposta.ok) {
           const copia = risposta.clone();

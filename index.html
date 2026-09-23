@@ -4,12 +4,12 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#1F4B4A">
-<title>CLaudio — Audio Converter Library</title>
+<title>CL-audio 6.7 — Audio Library Converter</title>
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="CLaudio">
+<meta name="apple-mobile-web-app-title" content="CL-audio">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="description" content="Lettore di PDF, EPUB, MOBI, AZW3 e TXT con sintesi vocale, equalizzatore e libreria locale.">
 <style>
@@ -885,11 +885,27 @@ select:focus-visible,
   line-height: 1.1;
 }
 
-.logo-app span {
+/* Il trattino sostituisce lo spazio che separava "CL" da "audio": la
+   separazione diventa esplicita, e il nome non si legge più come
+   "Claudio" scritto per esteso. Trattino e "audio" condividono il peso
+   leggero, così "CL" resta l'unico elemento in grassetto. */
+.logo-app .logo-trattino,
+.logo-app .logo-audio {
   font-weight: 300;
-  letter-spacing: 0.01em;
   color: var(--testo-attenuato);
-  margin-left: 0.32em;
+}
+
+.logo-app .logo-trattino { margin: 0 0.04em; }
+
+/* La versione accanto al nome permette di verificare a colpo d'occhio
+   quale revisione è realmente in esecuzione. */
+.logo-app .logo-versione {
+  font-size: 0.5em;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: var(--testo-attenuato);
+  vertical-align: 0.25em;
+  margin-left: 0.2em;
 }
 
 .payoff-app {
@@ -1038,8 +1054,8 @@ select:focus-visible,
   <section class="vista" id="vista-libreria">
     <div class="barra-superiore">
       <div class="blocco-logo">
-        <h1 class="logo-app">CL <span>audio</span></h1>
-        <p class="payoff-app">Audio Converter Library</p>
+        <h1 class="logo-app">CL<span class="logo-trattino">-</span><span class="logo-audio">audio</span> <small class="logo-versione" id="versione-logo"></small></h1>
+        <p class="payoff-app">Audio Library Converter</p>
       </div>
       <button class="icona-bottone" id="bottone-impostazioni" title="Impostazioni" aria-label="Impostazioni">
         <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
@@ -1402,6 +1418,8 @@ select:focus-visible,
       <button class="bottone-secondario bottone-pericolo" id="bottone-cancella-tutto">Cancella intera libreria</button>
     </div>
     <div class="versione-app" id="versione-app">—</div>
+    <button class="bottone-secondario bottone-discreto" id="bottone-forza-aggiornamento">Forza aggiornamento dell'applicazione</button>
+    <p class="nota-impostazione">Scarica di nuovo l'applicazione dal sito, ignorando le copie memorizzate. Libri, segnalibri, impostazioni e voci scaricate non vengono toccati.</p>
   </div>
 
   <!-- ===================== CASSETTO DIAGNOSTICA ===================== -->
@@ -4455,7 +4473,7 @@ const ControllerTTS = (() => {
   const AMPIEZZA_FINESTRA = 60;
   const MARGINE_RICOSTRUZIONE = 15;
   const INTERVALLO_MINIMO_SALVATAGGIO_MS = 3000;
-  const VERSIONE_APP = "6.6";
+  const VERSIONE_APP = "6.7";
   const DATA_VERSIONE_APP = "17 settembre 2026";
 
   const DIMENSIONI_CARATTERE = [0.88, 0.96, 1.04, 1.14, 1.26, 1.4, 1.56];
@@ -5099,8 +5117,8 @@ const ControllerTTS = (() => {
         : [];
       navigator.mediaSession.metadata = new MediaMetadata({
         title: libroCorrente.titolo || "Senza titolo",
-        artist: libroCorrente.autore || "CLaudio",
-        album: "audio convert library",
+        artist: libroCorrente.autore || "CL-audio",
+        album: "Audio Library Converter",
         artwork: illustrazioni,
       });
 
@@ -5773,6 +5791,32 @@ const ControllerTTS = (() => {
 
     el("bottone-riverifica-piper").addEventListener("click", eseguiDiagnosticaMotori);
 
+    /* Aggiornamento forzato. Rimuove il service worker e le sole copie
+       dell'applicazione (le cache il cui nome inizia per "claudio-"),
+       poi ricarica chiedendo esplicitamente una pagina nuova. Non tocca
+       IndexedDB, dove stanno libri, segnalibri e impostazioni, né
+       l'archivio del dispositivo che contiene le voci scaricate, né le
+       cache dei modelli neurali, che hanno nomi diversi. */
+    el("bottone-forza-aggiornamento").addEventListener("click", async () => {
+      if (!confirm("Scaricare di nuovo l'applicazione dal sito? Libri, segnalibri, impostazioni e voci scaricate non vengono toccati.")) return;
+      try {
+        ControllerTTS.interrompi();
+        if ("serviceWorker" in navigator) {
+          const registrazioni = await navigator.serviceWorker.getRegistrations();
+          await Promise.all(registrazioni.map((r) => r.unregister()));
+        }
+        if ("caches" in window) {
+          const nomi = await caches.keys();
+          await Promise.all(nomi.filter((n) => n.startsWith("claudio-")).map((n) => caches.delete(n)));
+        }
+      } catch (errore) {
+        // Anche se la pulizia fallisse, il ricaricamento con parametro
+        // unico ottiene comunque una pagina nuova dal server.
+      } finally {
+        location.replace(`${location.pathname}?aggiornamento=${Date.now()}`);
+      }
+    });
+
     // Via d'uscita manuale: se una voce scaricata risultasse guasta, la
     // si elimina dal dispositivo e la si può riscaricare da capo.
     el("bottone-elimina-voce").addEventListener("click", async () => {
@@ -6207,9 +6251,19 @@ const ControllerTTS = (() => {
     // Informazioni di versione: utili quando si segnala un problema, per
     // sapere con certezza quale revisione è effettivamente in esecuzione
     // (la cache del browser può servirne una diversa da quella pubblicata).
-    const motoreDescritto = ControllerTTS.motoreAttivo();
+    el("versione-logo").textContent = VERSIONE_APP;
+
+    // Dopo un aggiornamento forzato l'indirizzo contiene un parametro
+    // usato solo per aggirare le copie memorizzate: lo si rimuove, così
+    // l'indirizzo resta pulito e un eventuale segnalibro del browser
+    // non punta a una versione specifica.
+    if (location.search.includes("aggiornamento=")) {
+      history.replaceState(null, "", location.pathname);
+    }
+
+        const motoreDescritto = ControllerTTS.motoreAttivo();
     el("versione-app").innerHTML =
-      `<strong>CLaudio ${VERSIONE_APP}</strong>Audio Converter Library · ${DATA_VERSIONE_APP}<br>` +
+      `<strong>CL-audio ${VERSIONE_APP}</strong>Audio Library Converter · ${DATA_VERSIONE_APP}<br>` +
       `Motore attivo: ${escapeHtml(motoreDescritto.nome)}<br>` +
       `Contesto: ${window.isSecureContext ? "sicuro" : "non sicuro"} · ${escapeHtml(location.origin || "file locale")}`;
 
