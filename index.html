@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#1F4B4A">
-<title>CL-audio 6.7 — Audio Library Converter</title>
+<title>CL-audio 6.8 — Audio Library Converter</title>
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
@@ -2716,16 +2716,31 @@ async function analizzaEPUB(arrayBuffer) {
         mappaHrefIndiceFrase[hrefNormalizzato] = frasi.length;
       }
 
+      /* ATTENZIONE: section.load() di epub.js NON restituisce un
+         documento, ma il suo elemento radice (xml.documentElement,
+         cioè <html>). La proprietà .body esiste solo sui documenti:
+         cercandola sull'elemento si otteneva sempre undefined, e ogni
+         sezione produceva zero testo. È per questo che nessun EPUB si
+         caricava, indipendentemente da JSZip.
+
+         Il corpo si individua quindi cercando l'elemento <body>
+         all'interno della radice, con ripiego sulla radice stessa per
+         le sezioni prive di <body>. */
+      const radice = documento && documento.documentElement ? documento.documentElement : documento;
+      const corpo = radice
+        ? ((radice.querySelector && radice.querySelector("body")) || radice)
+        : null;
+
       // A differenza del PDF, l'EPUB è HTML strutturato: i paragrafi
       // sono marcati esplicitamente, quindi non serve ricostruirli per
       // via euristica. Si leggono direttamente i blocchi di testo,
       // scartando prima gli elementi non destinati alla lettura.
-      if (documento && documento.body) {
-        documento.body.querySelectorAll("script, style, sup.noteref, .footnote, .note").forEach((n) => n.remove());
+      if (corpo && corpo.querySelectorAll) {
+        corpo.querySelectorAll("script, style, sup.noteref, .footnote, .note").forEach((n) => n.remove());
       }
       const selettoreBlocchi = "p, h1, h2, h3, h4, h5, h6, li, blockquote, dd";
-      const tuttiBlocchi = documento && documento.body
-        ? Array.from(documento.body.querySelectorAll(selettoreBlocchi))
+      const tuttiBlocchi = corpo && corpo.querySelectorAll
+        ? Array.from(corpo.querySelectorAll(selettoreBlocchi))
         : [];
 
       // Un blockquote o un li che contiene <p> viene selezionato
@@ -2754,7 +2769,7 @@ async function analizzaEPUB(arrayBuffer) {
         });
       } else {
         // Sezione priva di marcatura a blocchi: si ricade sul testo grezzo
-        const testoSezione = normalizzaTipografia((documento && documento.body ? documento.body.textContent : "") || "");
+        const testoSezione = normalizzaTipografia((corpo ? corpo.textContent : "") || "");
         if (testoSezione.trim()) {
           contatoreParagrafi += 1;
           dividiInFrasi(testoSezione).forEach((frase) => {
@@ -2859,7 +2874,11 @@ async function analizzaEPUB(arrayBuffer) {
    di Amazon, oppure importati qui solo se privi di protezione.
    ========================================================= */
 
-const URL_MODULO_MOBI = "https://esm.sh/foliate-js@1.0.4/mobi.js";
+/* La versione pubblicata su npm è la 1.0.1: l'indirizzo precedente
+   indicava una 1.0.4 inesistente, e l'importazione falliva sempre. Il
+   pacchetto espone direttamente i file .js (campo "exports": "./*.js"),
+   quindi si carica il modulo così com'è, senza trasformazioni. */
+const URL_MODULO_MOBI = "https://cdn.jsdelivr.net/npm/foliate-js@1.0.1/mobi.js";
 
 async function analizzaMOBI(file) {
   let modulo;
@@ -2900,21 +2919,34 @@ async function analizzaMOBI(file) {
 
   for (const sezione of sezioni) {
     try {
-      const sorgente = await sezione.createDocument();
-      const documento = sorgente && sorgente.body ? sorgente : null;
+      /* Due vie, nell'ordine: createDocument() restituisce direttamente
+         un documento; in sua assenza load() restituisce l'indirizzo di
+         un file HTML temporaneo, che si scarica e si interpreta. Come
+         per l'EPUB, il corpo si cerca con querySelector, che funziona
+         sia su un documento sia su un elemento radice. */
+      let documento = null;
+      if (typeof sezione.createDocument === "function") {
+        documento = await sezione.createDocument();
+      } else if (typeof sezione.load === "function") {
+        const indirizzo = await sezione.load();
+        const testoHtml = await (await fetch(indirizzo)).text();
+        documento = new DOMParser().parseFromString(testoHtml, "text/html");
+      }
       if (!documento) continue;
+      const radiceSezione = documento.documentElement || documento;
+      const corpoSezione = (radiceSezione.querySelector && radiceSezione.querySelector("body")) || radiceSezione;
 
-      documento.body.querySelectorAll("script, style, .footnote, .note").forEach((n) => n.remove());
+      corpoSezione.querySelectorAll("script, style, .footnote, .note").forEach((n) => n.remove());
 
       // Stesso filtro applicato all'EPUB: senza di esso un blockquote
       // contenente paragrafi verrebbe accodato insieme ai propri figli
       // e quindi letto due volte.
-      const tutti = Array.from(documento.body.querySelectorAll(selettoreBlocchi));
+      const tutti = Array.from(corpoSezione.querySelectorAll(selettoreBlocchi));
       const blocchi = tutti.filter((b) => !b.querySelector(selettoreBlocchi));
 
       const daLeggere = blocchi.length
         ? blocchi
-        : (documento.body.textContent || "").trim() ? [documento.body] : [];
+        : (corpoSezione.textContent || "").trim() ? [corpoSezione] : [];
 
       daLeggere.forEach((blocco) => {
         const testo = normalizzaTipografia(blocco.textContent || "");
@@ -4473,7 +4505,7 @@ const ControllerTTS = (() => {
   const AMPIEZZA_FINESTRA = 60;
   const MARGINE_RICOSTRUZIONE = 15;
   const INTERVALLO_MINIMO_SALVATAGGIO_MS = 3000;
-  const VERSIONE_APP = "6.7";
+  const VERSIONE_APP = "6.8";
   const DATA_VERSIONE_APP = "17 settembre 2026";
 
   const DIMENSIONI_CARATTERE = [0.88, 0.96, 1.04, 1.14, 1.26, 1.4, 1.56];
@@ -4732,8 +4764,20 @@ const ControllerTTS = (() => {
           posizioneCorrente: 0,
         };
         await LibreriaDB.aggiungiLibro(libro);
+        ControllerTTS.registraEsterno(
+          "IMPORTAZIONE",
+          `riuscita: "${file.name}" (${estensione}) — ${libro.frasi.length} frasi, ${(libro.capitoli || []).length} capitoli`
+        );
       } catch (errore) {
         console.error("Errore durante l'importazione:", errore);
+        // Nel registro diagnostico, con formato e dimensione: in
+        // precedenza l'errore compariva solo in un avviso che, chiuso,
+        // non lasciava traccia, e i guasti degli EPUB e dei MOBI sono
+        // rimasti invisibili per molte versioni.
+        ControllerTTS.registraEsterno(
+          "IMPORTAZIONE",
+          `non riuscita: "${file.name}" (${estensione}, ${(file.size / 1048576).toFixed(1)} MB) — ${errore.name || "Errore"}: ${errore.message || errore}`
+        );
         alert(`Errore durante l'importazione di "${file.name}": ${errore.message || errore}`);
       }
     }
