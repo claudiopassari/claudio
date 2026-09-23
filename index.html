@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#1F4B4A">
-<title>CL-audio 6.8 — Audio Library Converter</title>
+<title>CL-audio 6.9 — Audio Library Converter</title>
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
@@ -4505,7 +4505,7 @@ const ControllerTTS = (() => {
   const AMPIEZZA_FINESTRA = 60;
   const MARGINE_RICOSTRUZIONE = 15;
   const INTERVALLO_MINIMO_SALVATAGGIO_MS = 3000;
-  const VERSIONE_APP = "6.8";
+  const VERSIONE_APP = "6.9";
   const DATA_VERSIONE_APP = "17 settembre 2026";
 
   const DIMENSIONI_CARATTERE = [0.88, 0.96, 1.04, 1.14, 1.26, 1.4, 1.56];
@@ -4715,10 +4715,71 @@ const ControllerTTS = (() => {
     return { pdf: "PDF", epub: "EPUB", txt: "Testo" }[formato] || formato;
   }
 
+  /* ---------- Riconoscimento del formato dal contenuto ----------
+
+     Il formato veniva dedotto soltanto dall'estensione del nome. Un file
+     il cui nome ha perso l'estensione durante lo scaricamento o la
+     condivisione — caso frequente, con il punto trasformato in trattino
+     basso — veniva rifiutato come "formato non supportato" anche se
+     perfettamente valido.
+
+     Ogni formato ha invece una firma nei primi byte, indipendente dal
+     nome, ed è su quella che si basa il sistema operativo stesso:
+     - PDF: il file inizia con "%PDF-";
+     - EPUB: archivio ZIP (inizia con "PK\x03\x04") il cui primo elemento
+       è "mimetype" con valore "application/epub+zip", in posizione fissa
+       per specifica; per gli EPUB non conformi si cerca nell'indice
+       finale dell'archivio il file obbligatorio META-INF/container.xml;
+     - MOBI e AZW3: database Palm con la sigla "BOOKMOBI" al byte 60.
+
+     Il contenuto prevale sull'estensione, così anche un file rinominato
+     in modo errato viene interpretato correttamente. Il testo semplice non
+     ha firma: per quello si usa l'estensione, oppure, in sua assenza, la
+     verifica che il file non contenga byte nulli. */
+  async function riconosciFormato(file) {
+    try {
+      const estensione = estensioneFile(file.name);
+      const testa = new Uint8Array(await file.slice(0, 128).arrayBuffer());
+      const leggi = (inizio, lunghezza) => String.fromCharCode(...testa.slice(inizio, inizio + lunghezza));
+
+      if (leggi(0, 5) === "%PDF-") return "pdf";
+      if (testa.length >= 68 && leggi(60, 8) === "BOOKMOBI") return "mobi";
+
+      const eZip = testa[0] === 0x50 && testa[1] === 0x4b && testa[2] === 0x03 && testa[3] === 0x04;
+      if (eZip) {
+        if (leggi(30, 8) === "mimetype" && leggi(38, 20) === "application/epub+zip") return "epub";
+        const coda = new Uint8Array(await file.slice(Math.max(0, file.size - 65536)).arrayBuffer());
+        const testoCoda = new TextDecoder("latin1").decode(coda);
+        if (testoCoda.includes("META-INF/container.xml")) return "epub";
+      }
+
+      if (["txt", "md"].includes(estensione)) return "txt";
+      if (["azw", "azw3", "prc", "mobi"].includes(estensione)) return "mobi";
+      if (["pdf", "epub"].includes(estensione)) return estensione;
+
+      // Senza estensione riconoscibile: testo semplice solo se nei primi
+      // kilobyte non compaiono byte nulli, che un file di testo non ha.
+      if (!estensione || estensione.length > 5) {
+        const campione = new Uint8Array(await file.slice(0, 4096).arrayBuffer());
+        if (campione.length && !campione.includes(0)) return "txt";
+      }
+      return null;
+    } catch (errore) {
+      return null;
+    }
+  }
+
   async function gestisciImportazione(fileList) {
     const file_array = Array.from(fileList);
     for (const file of file_array) {
-      const estensione = estensioneFile(file.name);
+      const estensioneNome = estensioneFile(file.name);
+      const estensione = (await riconosciFormato(file)) || estensioneNome;
+      if (estensione !== estensioneNome) {
+        ControllerTTS.registraEsterno(
+          "IMPORTAZIONE",
+          `"${file.name}": formato riconosciuto dal contenuto come ${estensione.toUpperCase()} (estensione nel nome: ${estensioneNome || "assente"})`
+        );
+      }
       mostraOverlay(`Importazione di "${file.name}" in corso…`);
       try {
         let risultato;
@@ -4728,15 +4789,15 @@ const ControllerTTS = (() => {
         } else if (estensione === "epub") {
           const buffer = await file.arrayBuffer();
           risultato = await analizzaEPUB(buffer);
-        } else if (estensione === "txt" || estensione === "md") {
+        } else if (estensione === "txt") {
           const testo = await file.text();
           risultato = await analizzaTXT(testo);
-        } else if (["mobi", "azw", "azw3", "prc"].includes(estensione)) {
+        } else if (estensione === "mobi") {
           // I formati Kindle vengono passati come File: il modulo legge
           // il file per porzioni, senza caricarlo interamente in memoria.
           risultato = await analizzaMOBI(file);
         } else {
-          alert(`Formato non supportato: .${estensione}. Formati validi: PDF, EPUB, MOBI, AZW3, TXT.`);
+          alert(`"${file.name}" non è stato riconosciuto né dal nome né dal contenuto. Formati supportati: PDF, EPUB, MOBI, AZW3, TXT.`);
           continue;
         }
 
