@@ -982,6 +982,45 @@ select:focus-visible,
   font-weight: 500;
 }
 
+/* ---------- Gruppo di configurazione della voce ----------
+   I passi numerati rendono esplicita la dipendenza: la voce dipende
+   dal motore, lo scaricamento dalla voce, la prova da entrambi. */
+
+.gruppo-voce {
+  border: 1px solid var(--bordo);
+  border-radius: 10px;
+  padding: 4px 14px 10px 14px;
+  margin-bottom: 14px;
+  background: var(--bg-elevata);
+}
+
+.passo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.35em;
+  height: 1.35em;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: var(--accento);
+  color: var(--accento-testo);
+  font-size: 0.72rem;
+  font-weight: 700;
+  vertical-align: 1px;
+}
+
+.coppia-bottoni {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.coppia-bottoni button { width: 100%; }
+
+#bottone-prova-voce { margin-top: 8px; }
+
+#stato-voce:empty, #stato-scaricamento-piper:empty { display: none; }
+
 </style>
 </head>
 <body>
@@ -1276,29 +1315,35 @@ select:focus-visible,
       <label><input type="checkbox" id="chk-ricostruisci-paragrafi" checked> Ricostruisci i paragrafi</label>
     </div>
 
-    <div class="riga-impostazione">
-      <label for="selettore-motore">Motore di sintesi vocale</label>
-      <select id="selettore-motore"></select>
-      <p class="nota-impostazione" id="descrizione-motore"></p>
-    </div>
+    <div class="gruppo-voce">
+      <div class="riga-impostazione">
+        <label for="selettore-motore"><span class="passo">1</span> Motore di sintesi vocale</label>
+        <select id="selettore-motore"></select>
+        <p class="nota-impostazione" id="descrizione-motore"></p>
+      </div>
 
-    <div class="riga-impostazione">
-      <label for="selettore-voce">Voce</label>
-      <select id="selettore-voce"></select>
-    </div>
+      <div class="riga-impostazione">
+        <label for="selettore-voce"><span class="passo">2</span> Voce</label>
+        <select id="selettore-voce"></select>
+        <p class="nota-impostazione" id="stato-voce"></p>
+      </div>
 
-    <div class="riga-impostazione" id="sezione-piper" hidden>
-      <button class="bottone-secondario" id="bottone-scarica-voce" style="width:100%;">Prepara il modello vocale</button>
-      <p class="nota-impostazione" id="stato-scaricamento-piper"></p>
-      <div id="diagnostica-piper"></div>
-      <button class="bottone-secondario" id="bottone-riverifica-piper" style="margin-top:8px; width:100%;">Ripeti la verifica dei requisiti</button>
-    </div>
+      <div class="riga-impostazione" id="sezione-piper" hidden>
+        <label><span class="passo">3</span> Requisiti e scaricamento</label>
+        <div class="coppia-bottoni">
+          <button class="bottone-secondario" id="bottone-riverifica-piper">Verifica requisiti</button>
+          <button class="bottone-secondario" id="bottone-scarica-voce">Scarica la voce</button>
+        </div>
+        <p class="nota-impostazione" id="stato-scaricamento-piper"></p>
+        <div id="diagnostica-piper"></div>
+      </div>
 
-    <div class="riga-impostazione">
-      <label for="selettore-frase-prova">Frase di prova</label>
-      <select id="selettore-frase-prova"></select>
-      <button class="bottone-secondario" id="bottone-prova-voce" style="margin-top:8px; width:100%;">Ascolta un esempio</button>
-      <p class="nota-impostazione" id="stato-prova-voce"></p>
+      <div class="riga-impostazione">
+        <label for="selettore-frase-prova"><span class="passo" id="numero-passo-prova">3</span> Prova di lettura</label>
+        <select id="selettore-frase-prova"></select>
+        <button class="bottone-principale" id="bottone-prova-voce">Ascolta un esempio</button>
+        <p class="nota-impostazione" id="stato-prova-voce"></p>
+      </div>
     </div>
 
     <div class="riga-impostazione">
@@ -2870,137 +2915,88 @@ async function analizzaMOBI(file) {
 
 /* ===== js/tts-neurale.js ===== */
 /* =========================================================
-   tts-neurale.js — sintesi neurale in locale
+   tts-neurale.js — motori di sintesi neurale in locale
 
-   CAUSA DEI FALLIMENTI PRECEDENTI (diagnosi)
+   STRUTTURA: catalogo esplicito motore → voci.
 
-   L'errore osservato — "no available backend found. ERR: [wasm]" —
-   non dipendeva dal modello né dalla rete. onnxruntime-web tenta per
-   impostazione predefinita il backend WebAssembly multi-thread, che
-   richiede SharedArrayBuffer; SharedArrayBuffer è disponibile solo in
-   pagine "cross-origin isolated", condizione che richiede le
-   intestazioni HTTP Cross-Origin-Opener-Policy e
-   Cross-Origin-Embedder-Policy. GitHub Pages serve file statici e non
-   consente di impostare intestazioni personalizzate: quella
-   condizione non è quindi raggiungibile, e il backend multi-thread
-   fallisce sempre. Il fallimento si presenta come errore di
-   caricamento di un modulo, mascherando la causa reale.
+   Nelle versioni precedenti motori diversi erano fusi in un unico
+   "motore neurale" con ripieghi automatici dall'uno all'altro. Ne
+   derivava confusione: la voce selezionata non coincideva
+   necessariamente con quella in uso, e un cambio di voce poteva
+   essere ignorato senza alcun segnale. Ora l'utente sceglie il
+   motore, poi una voce di quel motore, e viene usata esattamente
+   quella combinazione — o si riceve un errore esplicito.
 
-   RIMEDIO: imporre numThreads = 1 PRIMA di qualsiasi caricamento,
-   così che venga scelto il backend a thread singolo, che non richiede
-   SharedArrayBuffer e funziona su hosting statico.
+   ESITI DEI COLLAUDI SUL CAMPO, che determinano il catalogo:
+   - Piper: funziona con voci italiane autentiche (verificato con
+     Riccardo).
+   - Kokoro: il modello carica, ma la libreria kokoro-js espone solo
+     voci inglesi e britanniche. Resta disponibile, dichiarato come
+     tale: sul testo italiano pronuncia con fonetica inglese.
+   - MMS: nessun modello italiano esiste; i modelli di lingue affini
+     leggono l'italiano con accento straniero, comprensibile.
 
-   Due ulteriori accorgimenti, entrambi cause frequenti di guasto su
-   hosting statico:
-   - allowLocalModels = false: altrimenti la libreria cerca i modelli
-     in una cartella locale inesistente prima di rivolgersi alla rete,
-     e fallisce con un errore fuorviante.
-   - proxy = false: l'esecuzione in un worker separato aggiunge un
-     punto di rottura senza benefici determinanti su questo carico.
-
-   STRATEGIA: si tentano più fornitori in sequenza. Il primo che
-   produce audio vince; gli errori di quelli scartati vengono raccolti
-   e mostrati, così un guasto resta diagnosticabile invece di
-   presentarsi come silenzio.
+   CONFIGURAZIONE DI ONNXRUNTIME: il backend multi-thread richiede
+   SharedArrayBuffer, disponibile solo con intestazioni HTTP che
+   GitHub Pages non consente di impostare. Si impone quindi il
+   backend a thread singolo, pena l'errore "no available backend".
    ========================================================= */
 
-/* Candidati, nell'ordine stabilito da tre collaudi reali.
-
-   COSA HANNO DIMOSTRATO I COLLAUDI, comprese due mie sviste:
-
-   1. L'infrastruttura funziona. Con il backend a thread singolo i
-      modelli si scaricano ed eseguono senza intoppi.
-   2. "Xenova/mms-tts-ita" non esiste, e non per un errore di
-      conversione: l'italiano manca proprio dalla famiglia MMS-TTS,
-      anche nell'originale. Non esiste alcun modello MMS italiano.
-   3. Kokoro carica correttamente, ma la libreria kokoro-js espone
-      soltanto voci inglesi e britanniche: le voci italiane del
-      pacchetto multilingue non sono raggiungibili da browser.
-
-   CONSEGUENZA ONESTA: a oggi non esiste una voce neurale italiana
-   eseguibile in un browser tramite queste librerie. Restano modelli
-   di lingue affini che leggono il testo italiano con accento
-   straniero. Per l'italiano vero, la sintesi di sistema — le voci
-   Google su Android — resta la scelta migliore, ed è già disponibile
-   nel motore predefinito.
-
-   Lo spagnolo precede il portoghese perché condivide con l'italiano
-   quasi per intero il sistema vocalico e le regole fra grafia e
-   suono: il risultato è comprensibile, con accento. */
-const FORNITORI_NEURALI = [
-  {
-    /* Piper con voce italiana autentica. Le voci .onnx italiane
-       esistono già pubblicate: il passaggio critico non è il formato
-       del modello ma la fonemizzazione, perché Piper accetta fonemi e
-       non testo. vits-web è la libreria a monte di quella che aveva
-       fallito con un difetto di caricamento del runtime; incorpora
-       espeak-ng compilato in WebAssembly, quindi risolve da sé quel
-       passaggio. Se funziona, è la sola voce italiana vera
-       disponibile. */
-    nome: "Piper · voce italiana Riccardo",
+const CATALOGO_NEURALE = {
+  piper: {
     tipo: "vits",
     urlModulo: "https://cdn.jsdelivr.net/npm/@diffusionstudio/vits-web@1.0.3/+esm",
-    modelli: ["it_IT-riccardo-x_low"],
+    /* Il suffisso indica il livello qualitativo: "x_low" è il gradino
+       più basso della scala Piper (modello minuscolo, 16 kHz);
+       "medium" usa un modello più grande a 22 kHz, con differenza
+       udibile. */
+    voci: [
+      { id: "it_IT-paola-medium", nome: "Paola — italiano, qualità media (consigliata)", dimensione: "circa 63 MB" },
+      { id: "it_IT-riccardo-x_low", nome: "Riccardo — italiano, qualità bassa ma leggera", dimensione: "circa 20 MB" },
+    ],
   },
-  {
-    nome: "Piper · voce italiana Paola",
-    tipo: "vits",
-    urlModulo: "https://cdn.jsdelivr.net/npm/@diffusionstudio/vits-web@1.0.3/+esm",
-    modelli: ["it_IT-paola-medium"],
+  kokoro: {
+    tipo: "kokoro",
+    urlModulo: "https://cdn.jsdelivr.net/npm/kokoro-js@1.2.1/+esm",
+    modello: "onnx-community/Kokoro-82M-v1.0-ONNX",
+    voci: [
+      { id: "af_heart", nome: "Heart — inglese americano, femminile", dimensione: "circa 86 MB" },
+      { id: "af_bella", nome: "Bella — inglese americano, femminile", dimensione: "circa 86 MB" },
+      { id: "am_michael", nome: "Michael — inglese americano, maschile", dimensione: "circa 86 MB" },
+      { id: "bf_emma", nome: "Emma — inglese britannico, femminile", dimensione: "circa 86 MB" },
+      { id: "bm_george", nome: "George — inglese britannico, maschile", dimensione: "circa 86 MB" },
+    ],
   },
-  {
-    nome: "Modello spagnolo su testo italiano",
+  mms: {
     tipo: "transformers",
     urlModulo: "https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.5.1",
-    modelli: ["Xenova/mms-tts-spa"],
+    /* Lo spagnolo precede le altre lingue perché condivide con
+       l'italiano quasi per intero il sistema vocalico e le regole fra
+       grafia e suono: il risultato è il più comprensibile dei tre. */
+    voci: [
+      { id: "Xenova/mms-tts-spa", nome: "Spagnolo — accento straniero, il più comprensibile", dimensione: "circa 40 MB" },
+      { id: "Xenova/mms-tts-por", nome: "Portoghese — accento straniero", dimensione: "circa 40 MB" },
+      { id: "Xenova/mms-tts-fra", nome: "Francese — accento straniero", dimensione: "circa 40 MB" },
+    ],
   },
-  {
-    nome: "Modello portoghese su testo italiano",
-    tipo: "transformers",
-    urlModulo: "https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.5.1",
-    modelli: ["Xenova/mms-tts-por"],
-  },
-  {
-    nome: "Modello francese su testo italiano",
-    tipo: "transformers",
-    urlModulo: "https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.5.1",
-    modelli: ["Xenova/mms-tts-fra"],
-  },
-];
-
-/* Voci italiane Piper realmente pubblicate. Il suffisso indica il
-   livello qualitativo del modello: "x_low" è il più basso della scala
-   (campionamento a 16 kHz, modello minuscolo), "medium" usa un modello
-   più grande a 22 kHz. La differenza è udibile: x_low si sceglie solo
-   se il dispositivo fatica. */
-const VOCI_NEURALI = [
-  { id: "it_IT-paola-medium", nome: "Paola — qualità media (consigliata)", tipo: "vits" },
-  { id: "it_IT-riccardo-x_low", nome: "Riccardo — qualità bassa, più leggera", tipo: "vits" },
-  { id: "spa", nome: "Modello spagnolo (accento straniero)", tipo: "transformers" },
-];
-
-let vocePreferita = "it_IT-paola-medium";
-function impostaVocePreferita(id) {
-  if (id && id !== vocePreferita) {
-    vocePreferita = id;
-    // Cambiare voce impone di ricostruire la pipeline: quella in
-    // memoria è legata al modello precedente.
-    reimposta();
-  }
-}
+};
 
 const MotoreNeurale = (() => {
-  let pipelineAttiva = null;
-  let fornitoreAttivo = null;
-  let caricamentoInCorso = null;
-  let diarioCaricamento = [];
+  // I moduli JavaScript si caricano una volta per motore; i
+  // sintetizzatori pronti si conservano per combinazione motore|voce,
+  // così che passare da una voce all'altra non costringa a ricaricare
+  // ciò che è già in memoria.
+  const moduliCaricati = new Map();
+  const sintetizzatoriPronti = new Map();
+  const preparazioniInCorso = new Map();
+  let diario = [];
 
   function annota(testo) {
-    diarioCaricamento.push(testo);
-    if (diarioCaricamento.length > 40) diarioCaricamento.shift();
+    diario.push(`${new Date().toTimeString().slice(0, 8)} ${testo}`);
+    if (diario.length > 60) diario.shift();
   }
 
-  function ottieniDiario() { return diarioCaricamento.join("\n"); }
+  function ottieniDiario() { return diario.join("\n"); }
 
   /* ---------- Composizione del file WAV ---------- */
 
@@ -3033,198 +3029,171 @@ const MotoreNeurale = (() => {
     return new Blob([buffer], { type: "audio/wav" });
   }
 
-  function inBlob(uscita) {
+  async function inBlob(uscita) {
     if (!uscita) throw new Error("Nessun audio restituito dal modello.");
     if (uscita instanceof Blob) return uscita;
     if (uscita.audio && uscita.sampling_rate) return componiWav(uscita.audio, uscita.sampling_rate);
-    if (typeof uscita.toBlob === "function") return uscita.toBlob();
+    if (typeof uscita.toBlob === "function") return await uscita.toBlob();
     throw new Error("Formato audio non riconosciuto.");
   }
 
-  /* ---------- Configurazione di onnxruntime ---------- */
+  /* ---------- Caricamento dei moduli ---------- */
 
   function configuraAmbiente(modulo) {
-    const env = modulo.env;
+    const env = modulo && modulo.env;
     if (!env) return;
     try {
       env.allowLocalModels = false;
       env.useBrowserCache = true;
-      if (env.backends && env.backends.onnx && env.backends.onnx.wasm) {
-        const wasm = env.backends.onnx.wasm;
-        // Il punto decisivo: senza questa riga viene scelto il backend
-        // multi-thread, irraggiungibile su hosting statico.
+      const wasm = env.backends && env.backends.onnx && env.backends.onnx.wasm;
+      if (wasm) {
         wasm.numThreads = 1;
         wasm.simd = true;
-        // proxy = true sposta l'inferenza in un worker separato. È
-        // determinante: sul thread principale ogni sintesi congela
-        // l'interfaccia per interi secondi, e su un libro — dove le
-        // sintesi si susseguono senza sosta — l'applicazione smette
-        // del tutto di rispondere ai comandi.
+        // Inferenza in un worker: sul thread principale ogni sintesi
+        // congela l'interfaccia, e su un libro l'app smette di
+        // rispondere ai comandi.
         wasm.proxy = true;
       }
-      annota("Ambiente configurato: thread singolo, modelli remoti, nessun proxy.");
     } catch (errore) {
-      annota(`Configurazione ambiente parziale: ${errore.message || errore}`);
+      annota(`Configurazione parziale dell'ambiente: ${errore.message || errore}`);
     }
   }
 
-  /* ---------- Caricamento con catena di ripieghi ---------- */
-
-  function reimposta() {
-    pipelineAttiva = null;
-    fornitoreAttivo = null;
+  async function caricaModulo(idMotore) {
+    if (moduliCaricati.has(idMotore)) return moduliCaricati.get(idMotore);
+    const voceCatalogo = CATALOGO_NEURALE[idMotore];
+    if (!voceCatalogo) throw new Error(`Motore sconosciuto: ${idMotore}`);
+    annota(`Caricamento della libreria per ${idMotore}…`);
+    const modulo = await import(/* @vite-ignore */ voceCatalogo.urlModulo);
+    configuraAmbiente(modulo);
+    moduliCaricati.set(idMotore, modulo);
+    annota(`Libreria per ${idMotore} caricata.`);
+    return modulo;
   }
 
-  function ordinaCandidati() {
-    // La voce scelta dall'utente va provata per prima; le altre
-    // restano come ripiego, così una voce non disponibile non lascia
-    // l'applicazione senza sintesi.
-    const prescelti = FORNITORI_NEURALI.filter((f) => (f.modelli || []).includes(vocePreferita));
-    const restanti = FORNITORI_NEURALI.filter((f) => !prescelti.includes(f));
-    return [...prescelti, ...restanti];
-  }
+  /* ---------- Preparazione di una combinazione motore|voce ---------- */
 
-  async function caricaPipeline(alProgresso) {
-    if (pipelineAttiva) return pipelineAttiva;
-    if (caricamentoInCorso) return await caricamentoInCorso;
+  function chiave(idMotore, idVoce) { return `${idMotore}|${idVoce}`; }
 
-    caricamentoInCorso = (async () => {
-      const errori = [];
-      for (const fornitore of ordinaCandidati()) {
-        try {
-          annota(`Tentativo con ${fornitore.nome}…`);
-          const modulo = await import(/* @vite-ignore */ fornitore.urlModulo);
-          configuraAmbiente(modulo);
-
-          let sintetizzatore = null;
-          let ultimoErroreModello = null;
-
-          for (const idModello of fornitore.modelli) {
-            try {
-              annota(`  modello ${idModello}…`);
-              const riferisciProgresso = (evento) => {
-                if (!alProgresso || !evento) return;
-                if (evento.status === "progress" && evento.total) {
-                  alProgresso(Math.round((evento.loaded / evento.total) * 100), evento.file || "");
-                } else if (evento.status === "download") {
-                  alProgresso(null, evento.file || "");
-                }
-              };
-
-              if (fornitore.tipo === "vits") {
-                // vits-web non espone una pipeline: si limita a
-                // scaricare la voce e a restituire direttamente un Blob
-                // audio già pronto alla riproduzione.
-                if (typeof modulo.download === "function") {
-                  const gia = typeof modulo.stored === "function" ? await modulo.stored() : [];
-                  if (!gia.includes(idModello)) {
-                    await modulo.download(idModello, (progresso) => {
-                      if (alProgresso && progresso && progresso.total) {
-                        alProgresso(Math.round((progresso.loaded / progresso.total) * 100), idModello);
-                      }
-                    });
-                  }
-                }
-                if (typeof modulo.predict !== "function") {
-                  throw new Error("Il modulo non espone la funzione predict.");
-                }
-                // Sintesi di verifica: senza questa prova un guasto
-                // emergerebbe solo alla prima frase del libro, quando
-                // ripiegare su un altro fornitore non è più possibile.
-                const prova = await modulo.predict({ text: "prova", voiceId: idModello });
-                if (!prova) throw new Error("La sintesi di verifica non ha prodotto audio.");
-                sintetizzatore = {
-                  tipo: "vits",
-                  genera: (testo) => modulo.predict({ text: testo, voiceId: idModello }),
-                };
-              } else if (fornitore.tipo === "kokoro") {
-                const Costruttore = modulo.KokoroTTS || (modulo.default && modulo.default.KokoroTTS);
-                if (!Costruttore) throw new Error("Il modulo non espone KokoroTTS.");
-                // q8 riduce il modello da circa 326 MB a circa 86 MB
-                // senza differenze udibili apprezzabili.
-                const istanza = await Costruttore.from_pretrained(idModello, {
-                  dtype: "q8",
-                  device: "wasm",
-                  progress_callback: riferisciProgresso,
-                });
-                sintetizzatore = {
-                  tipo: "kokoro",
-                  genera: (testo) => istanza.generate(testo, { voice: fornitore.voce }),
-                };
-              } else {
-                const creaPipeline = modulo.pipeline || (modulo.default && modulo.default.pipeline);
-                if (typeof creaPipeline !== "function") {
-                  throw new Error("Il modulo non espone la funzione pipeline.");
-                }
-                const pipeline = await creaPipeline("text-to-speech", idModello, {
-                  dtype: "fp32",
-                  device: "wasm",
-                  progress_callback: riferisciProgresso,
-                });
-                const opzioni = fornitore.richiedeVoce
-                  ? { speaker_embeddings: fornitore.richiedeVoce }
-                  : undefined;
-                sintetizzatore = {
-                  tipo: "transformers",
-                  genera: (testo) => pipeline(testo, opzioni),
-                };
-              }
-              break;
-            } catch (erroreModello) {
-              ultimoErroreModello = erroreModello;
-              annota(`  modello ${idModello} non disponibile: ${erroreModello.message || erroreModello}`);
-            }
-          }
-          if (!sintetizzatore) throw ultimoErroreModello || new Error("Nessun modello caricabile.");
-
-          pipelineAttiva = sintetizzatore;
-          fornitoreAttivo = fornitore;
-          annota(`Riuscito con ${fornitore.nome}.`);
-          return pipelineAttiva;
-        } catch (errore) {
-          const messaggio = `${fornitore.nome}: ${errore.message || errore}`;
-          annota(`Non riuscito — ${messaggio}`);
-          errori.push(messaggio);
-        }
+  function riferitoreProgresso(alProgresso) {
+    return (evento) => {
+      if (!alProgresso || !evento) return;
+      if (evento.status === "progress" && evento.total) {
+        alProgresso(Math.round((evento.loaded / evento.total) * 100), evento.file || "");
+      } else if (typeof evento.loaded === "number" && evento.total) {
+        alProgresso(Math.round((evento.loaded / evento.total) * 100), "");
       }
-      throw new Error(`Nessun fornitore disponibile.\n${errori.join("\n")}`);
+    };
+  }
+
+  async function preparaPiper(modulo, idVoce, alProgresso) {
+    if (typeof modulo.predict !== "function") {
+      throw new Error("La libreria Piper non espone la funzione predict.");
+    }
+    if (typeof modulo.download === "function") {
+      const presenti = typeof modulo.stored === "function" ? await modulo.stored() : [];
+      if (!presenti.includes(idVoce)) {
+        annota(`Scaricamento della voce ${idVoce}…`);
+        await modulo.download(idVoce, riferitoreProgresso(alProgresso));
+      } else {
+        annota(`Voce ${idVoce} già presente sul dispositivo.`);
+      }
+    }
+    return { genera: (testo) => modulo.predict({ text: testo, voiceId: idVoce }) };
+  }
+
+  async function preparaKokoro(modulo, idVoce, alProgresso) {
+    // Il modello Kokoro è unico per tutte le voci: si carica una volta
+    // e la voce si specifica a ogni sintesi.
+    let istanza = sintetizzatoriPronti.get("kokoro|__modello__");
+    if (!istanza) {
+      const Costruttore = modulo.KokoroTTS || (modulo.default && modulo.default.KokoroTTS);
+      if (!Costruttore) throw new Error("La libreria non espone KokoroTTS.");
+      annota("Caricamento del modello Kokoro…");
+      istanza = await Costruttore.from_pretrained(CATALOGO_NEURALE.kokoro.modello, {
+        dtype: "q8",
+        device: "wasm",
+        progress_callback: riferitoreProgresso(alProgresso),
+      });
+      sintetizzatoriPronti.set("kokoro|__modello__", istanza);
+    }
+    return { genera: (testo) => istanza.generate(testo, { voice: idVoce }) };
+  }
+
+  async function preparaTransformers(modulo, idVoce, alProgresso) {
+    const creaPipeline = modulo.pipeline || (modulo.default && modulo.default.pipeline);
+    if (typeof creaPipeline !== "function") {
+      throw new Error("La libreria non espone la funzione pipeline.");
+    }
+    annota(`Caricamento del modello ${idVoce}…`);
+    const pipeline = await creaPipeline("text-to-speech", idVoce, {
+      dtype: "fp32",
+      device: "wasm",
+      progress_callback: riferitoreProgresso(alProgresso),
+    });
+    return { genera: (testo) => pipeline(testo) };
+  }
+
+  async function prepara(idMotore, idVoce, alProgresso) {
+    const k = chiave(idMotore, idVoce);
+    if (sintetizzatoriPronti.has(k)) return sintetizzatoriPronti.get(k);
+    if (preparazioniInCorso.has(k)) return await preparazioniInCorso.get(k);
+
+    const lavoro = (async () => {
+      const voceCatalogo = CATALOGO_NEURALE[idMotore];
+      if (!voceCatalogo) throw new Error(`Motore sconosciuto: ${idMotore}`);
+      if (!voceCatalogo.voci.some((v) => v.id === idVoce)) {
+        throw new Error(`La voce "${idVoce}" non appartiene al motore ${idMotore}.`);
+      }
+      const modulo = await caricaModulo(idMotore);
+      let sintetizzatore;
+      if (voceCatalogo.tipo === "vits") sintetizzatore = await preparaPiper(modulo, idVoce, alProgresso);
+      else if (voceCatalogo.tipo === "kokoro") sintetizzatore = await preparaKokoro(modulo, idVoce, alProgresso);
+      else sintetizzatore = await preparaTransformers(modulo, idVoce, alProgresso);
+      sintetizzatoriPronti.set(k, sintetizzatore);
+      annota(`Pronto: ${idMotore} / ${idVoce}.`);
+      return sintetizzatore;
     })();
 
+    preparazioniInCorso.set(k, lavoro);
     try {
-      return await caricamentoInCorso;
+      return await lavoro;
+    } catch (errore) {
+      annota(`Non riuscito (${idMotore} / ${idVoce}): ${errore.message || errore}`);
+      throw errore;
     } finally {
-      caricamentoInCorso = null;
+      preparazioniInCorso.delete(k);
     }
   }
 
-  async function sintetizza(testo) {
-    const sintetizzatore = await caricaPipeline();
-    return inBlob(await sintetizzatore.genera(testo));
+  function ePronto(idMotore, idVoce) {
+    return sintetizzatoriPronti.has(chiave(idMotore, idVoce));
   }
 
-  async function scaricaModello(idMotore, idVoce, alProgresso) {
-    await caricaPipeline(alProgresso);
+  async function sintetizza(testo, idMotore, idVoce) {
+    const sintetizzatore = await prepara(idMotore, idVoce);
+    return await inBlob(await sintetizzatore.genera(testo));
   }
 
-  /* ---------- Diagnostica ---------- */
+  /* ---------- Diagnostica dei requisiti ---------- */
 
   async function verificaRequisiti() {
     const esiti = [];
-
     esiti.push({
       nome: "Contesto sicuro (HTTPS)",
       esito: !!window.isSecureContext,
       nota: window.isSecureContext ? `Origine: ${location.origin}` : "Necessario per i motori neurali.",
     });
-
     esiti.push({
       nome: "WebAssembly",
       esito: typeof WebAssembly === "object",
       nota: typeof WebAssembly === "object" ? "Supportato." : "Non supportato.",
     });
-
-    // Informativo, non bloccante: la sua assenza è la ragione per cui
-    // si impone il backend a thread singolo, non un ostacolo.
+    esiti.push({
+      nome: "Archivio modelli",
+      esito: "caches" in window || (navigator.storage && typeof navigator.storage.getDirectory === "function"),
+      nota: "Le voci scaricate restano memorizzate sul dispositivo.",
+    });
     const isolata = typeof crossOriginIsolated !== "undefined" && crossOriginIsolated;
     esiti.push({
       nome: "Multi-thread (facoltativo)",
@@ -3232,15 +3201,8 @@ const MotoreNeurale = (() => {
       facoltativo: true,
       nota: isolata
         ? "Disponibile: sintesi più rapida."
-        : "Non disponibile su hosting statico: si usa il backend a thread singolo, più lento ma funzionante. Non è un errore.",
+        : "Non disponibile su hosting statico: si usa il thread singolo, più lento ma funzionante. Non è un errore.",
     });
-
-    esiti.push({
-      nome: "Archivio modelli (Cache API)",
-      esito: "caches" in window,
-      nota: "caches" in window ? "Il modello resta memorizzato dopo il primo scaricamento." : "Il modello andrebbe riscaricato ogni volta.",
-    });
-
     let rete = false;
     try {
       await fetch("https://cdn.jsdelivr.net/npm/", { method: "HEAD", mode: "no-cors" });
@@ -3249,25 +3211,22 @@ const MotoreNeurale = (() => {
     esiti.push({
       nome: "Accesso alla rete",
       esito: rete,
-      nota: rete ? "Raggiungibile." : "Necessaria al primo scaricamento.",
+      nota: rete ? "Raggiungibile." : "Necessaria al primo scaricamento di ogni voce.",
     });
-
     return { esiti, utilizzabile: esiti.every((e) => e.esito || e.facoltativo) };
   }
 
-  function vociDi() { return VOCI_NEURALI; }
-  function nomeFornitoreAttivo() { return fornitoreAttivo ? fornitoreAttivo.nome : null; }
+  function vociDi(idMotore) {
+    return (CATALOGO_NEURALE[idMotore] || { voci: [] }).voci;
+  }
 
   return {
-    verificaRequisiti,
-    scaricaModello,
+    prepara,
+    ePronto,
     sintetizza,
     vociDi,
-    impostaVocePreferita,
-    reimposta,
-    vociNeurali: VOCI_NEURALI,
+    verificaRequisiti,
     ottieniDiario,
-    nomeFornitoreAttivo,
   };
 })();
 
@@ -3319,17 +3278,34 @@ const REGISTRO_MOTORI = {
       return window.speechSynthesis ? window.speechSynthesis.getVoices() : [];
     },
   },
-  neurale: {
-    id: "neurale",
-    nome: "Voce neurale italiana (in locale)",
+  piper: {
+    id: "piper",
+    nome: "Piper — voci italiane autentiche",
     tipo: "audio",
-    ottieniVoci() {
-      return (typeof MotoreNeurale !== "undefined" ? MotoreNeurale.vociNeurali : []).map((v) => ({
-        voiceURI: v.id, name: v.nome, lang: "it-IT",
-      }));
-    },
+    ottieniVoci() { return vociNeuraliDi("piper"); },
+  },
+  kokoro: {
+    id: "kokoro",
+    nome: "Kokoro — voci inglesi",
+    tipo: "audio",
+    ottieniVoci() { return vociNeuraliDi("kokoro"); },
+  },
+  mms: {
+    id: "mms",
+    nome: "MMS — lingue affini all'italiano",
+    tipo: "audio",
+    ottieniVoci() { return vociNeuraliDi("mms"); },
   },
 };
+
+function vociNeuraliDi(idMotore) {
+  if (typeof MotoreNeurale === "undefined") return [];
+  return MotoreNeurale.vociDi(idMotore).map((v) => ({
+    voiceURI: v.id,
+    name: v.dimensione ? `${v.nome} (${v.dimensione})` : v.nome,
+    lang: "it-IT",
+  }));
+}
 
 const ControllerTTS = (() => {
   const UNITA_IN_ANTICIPO = 2;
@@ -3508,7 +3484,7 @@ const ControllerTTS = (() => {
     if (inRiproduzione) pausa();
 
     if (motoreCorrente.tipo === "audio") {
-      const blob = await MotoreNeurale.sintetizza(testoProva, voceSelezionataURI, motoreCorrente.id);
+      const blob = await MotoreNeurale.sintetizza(testoProva, motoreCorrente.id, voceSelezionataURI);
       const audio = ottieniElementoAudio();
       costruisciCatenaAudio();
       if (contestoAudio && contestoAudio.state === "suspended") {
@@ -3775,11 +3751,29 @@ const ControllerTTS = (() => {
     return elementoAudio;
   }
 
+  const TIMEOUT_SINTESI_MS = 90000;
+
   async function generaAudioUnita(indice) {
     const testo = frasi[indice];
     if (!testo) return null;
-    const blob = await MotoreNeurale.sintetizza(testo);
-    return URL.createObjectURL(blob);
+    // Senza limite di tempo una sintesi che non termina lascia
+    // l'applicazione in attesa indefinita, con il tasto di
+    // riproduzione attivo e nessuna reazione ai comandi.
+    let timer = null;
+    try {
+      const blob = await Promise.race([
+        MotoreNeurale.sintetizza(testo, motoreCorrente.id, voceSelezionataURI),
+        new Promise((_, rifiuta) => {
+          timer = setTimeout(
+            () => rifiuta(new Error("La sintesi non ha risposto entro 90 secondi.")),
+            TIMEOUT_SINTESI_MS
+          );
+        }),
+      ]);
+      return URL.createObjectURL(blob);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
   }
 
   async function riproduciSequenzaAudio(indice) {
@@ -4014,7 +4008,7 @@ const ControllerTTS = (() => {
   const AMPIEZZA_FINESTRA = 60;
   const MARGINE_RICOSTRUZIONE = 15;
   const INTERVALLO_MINIMO_SALVATAGGIO_MS = 3000;
-  const VERSIONE_APP = "5.8";
+  const VERSIONE_APP = "6.0";
   const DATA_VERSIONE_APP = "17 settembre 2026";
 
   const DIMENSIONI_CARATTERE = [0.88, 0.96, 1.04, 1.14, 1.26, 1.4, 1.56];
@@ -4978,8 +4972,10 @@ const ControllerTTS = (() => {
   }
 
   const DESCRIZIONI_MOTORE = {
-    webspeech: "Voci del sistema operativo, comprese quelle neurali di Google se installate. A oggi è la scelta migliore per l'italiano: pronuncia corretta, nessuno scaricamento, nessuna attesa. Non è però equalizzabile, perché il parlato va direttamente all'uscita audio senza passare per l'applicazione.",
-    neurale: "SPERIMENTALE, può rallentare o bloccare l'applicazione su dispositivi lenti; in tal caso chiudi e riapri il browser. Prova nell'ordine una voce italiana Piper e, se non disponibile, ripiega su modelli di lingue affini. Nessun modello neurale italiano è oggi eseguibile in un browser — l'italiano manca dalla famiglia MMS e le voci italiane di Kokoro non sono raggiungibili da JavaScript. Se la voce italiana non risulta disponibile, un modello spagnolo legge il testo italiano: comprensibile ma con accento. Funziona senza rete e può essere equalizzato. Nel dubbio, la sintesi di sistema resta la scelta più sicura.",
+    webspeech: "Voci del sistema operativo, comprese le voci neurali di Google se installate. Pronuncia italiana corretta, nessuno scaricamento, nessuna attesa. Non equalizzabile: il parlato va direttamente all'uscita audio.",
+    piper: "Voci neurali italiane autentiche, eseguite sul dispositivo. Ogni voce si scarica una sola volta, poi funziona anche senza rete. Equalizzabile. La prima frase richiede qualche secondo.",
+    kokoro: "Modello neurale di alta qualità, ma la libreria disponibile per il browser offre solo voci inglesi: sul testo italiano la pronuncia risulta inglese. Utile per libri in inglese.",
+    mms: "Non esiste un modello MMS italiano: queste voci di lingue affini leggono l'italiano con accento straniero. Lo spagnolo è il più comprensibile. Ripiego da usare solo se Piper non funziona.",
   };
 
   function aggiornaDescrizioneMotore(idMotore) {
@@ -5131,58 +5127,148 @@ const ControllerTTS = (() => {
 
   /* ---------- Motori neurali (Piper) ---------- */
 
+  /* ---------- Motore e voce ----------
+
+     Gerarchia esplicita, nell'ordine in cui compare all'utente:
+     1. motore  →  2. voce di quel motore  →  3. requisiti e
+     scaricamento (solo motori neurali)  →  4. prova di lettura.
+
+     La voce scelta viene ricordata per ciascun motore separatamente:
+     passando da Piper alla sintesi di sistema e ritorno, si ritrova la
+     voce Piper selezionata in precedenza invece di ripartire dalla
+     prima dell'elenco. */
+
+  function eMotoreNeurale(idMotore) {
+    const motore = ControllerTTS.elencaMotori().find((m) => m.id === idMotore);
+    return !!motore && motore.tipo === "audio";
+  }
+
+  function voceNeuraleCorrente() {
+    return MotoreNeurale.vociDi(el("selettore-motore").value)
+      .find((v) => v.id === el("selettore-voce").value);
+  }
+
+  // Definita a livello di modulo, e non dentro popolaMotoriEVoci come
+  // in precedenza: il gestore d'errore del controller la richiama per
+  // riallineare l'interfaccia dopo un ripiego automatico, e da fuori
+  // quella funzione non era raggiungibile.
+  async function popolaVoci(idMotore) {
+    const selettore = el("selettore-voce");
+    const voci = ControllerTTS.elencaVoci();
+    selettore.innerHTML = "";
+
+    if (!voci.length) {
+      const opzione = document.createElement("option");
+      opzione.value = "";
+      opzione.textContent = idMotore === "webspeech"
+        ? "Nessuna voce di sistema disponibile"
+        : "Nessuna voce per questo motore";
+      selettore.appendChild(opzione);
+      aggiornaStatoVoce();
+      return;
+    }
+
+    // Per la sintesi di sistema le voci italiane vanno in testa:
+    // Android ne espone decine in ogni lingua, e cercare quella
+    // italiana in fondo all'elenco è scomodo.
+    const ordinate = idMotore === "webspeech"
+      ? [...voci].sort((x, y) => {
+          const ix = (x.lang || "").toLowerCase().startsWith("it") ? 0 : 1;
+          const iy = (y.lang || "").toLowerCase().startsWith("it") ? 0 : 1;
+          return ix - iy || (x.name || "").localeCompare(y.name || "");
+        })
+      : voci;
+
+    ordinate.forEach((voce) => {
+      const opzione = document.createElement("option");
+      opzione.value = voce.voiceURI;
+      opzione.textContent = idMotore === "webspeech" ? `${voce.name} (${voce.lang})` : voce.name;
+      selettore.appendChild(opzione);
+    });
+
+    // La vecchia chiave unica "voce" viene consultata solo se manca
+    // quella per motore: preserva la scelta fatta con le versioni
+    // precedenti senza applicare un identificativo Piper alla sintesi
+    // di sistema, dove non avrebbe significato.
+    const salvata = (await LibreriaDB.ottieniImpostazione(`voce-${idMotore}`, null))
+      || (idMotore === "webspeech" ? await LibreriaDB.ottieniImpostazione("voce", null) : null);
+    if (salvata && ordinate.some((v) => v.voiceURI === salvata)) selettore.value = salvata;
+    ControllerTTS.impostaVoce(selettore.value);
+    aggiornaStatoVoce();
+  }
+
+  function aggiornaStatoVoce() {
+    const stato = el("stato-voce");
+    const idMotore = el("selettore-motore").value;
+    if (!eMotoreNeurale(idMotore)) { stato.textContent = ""; return; }
+    const voce = voceNeuraleCorrente();
+    if (!voce) { stato.textContent = ""; return; }
+    stato.textContent = MotoreNeurale.ePronto(idMotore, voce.id)
+      ? "Voce pronta all'uso."
+      : `Da scaricare al primo utilizzo (${voce.dimensione}). Puoi farlo subito con "Scarica la voce", oppure verrà scaricata alla prima prova.`;
+  }
+
+  // Solo interfaccia: nessun effetto sul controller. Usata anche dopo
+  // un ripiego automatico, quando il controller ha già cambiato motore.
+  async function aggiornaInterfacciaMotore(idMotore) {
+    const neurale = eMotoreNeurale(idMotore);
+    el("selettore-motore").value = idMotore;
+    el("sezione-piper").hidden = !neurale;
+    el("riga-tono").hidden = neurale; // il tono è proprietà del modello, non regolabile
+    el("numero-passo-prova").textContent = neurale ? "4" : "3";
+    el("stato-scaricamento-piper").textContent = "";
+    el("diagnostica-piper").innerHTML = "";
+    aggiornaDescrizioneMotore(idMotore);
+    await popolaVoci(idMotore);
+    aggiornaInterfacciaEqualizzatore();
+  }
+
+  async function applicaSceltaMotore(idMotore) {
+    ControllerTTS.interrompi();
+    ControllerTTS.impostaMotore(idMotore);
+    await LibreriaDB.impostaImpostazione("motore", idMotore);
+    await aggiornaInterfacciaMotore(idMotore);
+  }
+
   async function eseguiDiagnosticaMotori() {
     const contenitore = el("diagnostica-piper");
     contenitore.innerHTML = "<p class=\"nota-impostazione\">Verifica dei requisiti in corso…</p>";
     const { esiti, utilizzabile } = await MotoreNeurale.verificaRequisiti();
-
     const righe = esiti
       .map((e) => `<li class="${e.esito ? "requisito-ok" : "requisito-ko"}"><strong>${escapeHtml(e.nome)}</strong>: ${e.esito ? "disponibile" : "non disponibile"}<br><span>${escapeHtml(e.nota)}</span></li>`)
       .join("");
-
     const conclusione = utilizzabile
-      ? "<p class=\"nota-impostazione\">Tutti i requisiti sono soddisfatti: scarica una voce per iniziare.</p>"
-      : "<p class=\"nota-impostazione\">Almeno un requisito non è soddisfatto. Questo non dipende dall'applicazione ma dal contesto in cui viene aperta: un file locale (file://) non è un'origine sicura, e senza origine sicura il browser non concede l'archivio in cui il modello vocale va conservato. Pubblicando lo stesso identico file su GitHub Pages, o servendolo da un server locale, i requisiti risultano soddisfatti senza alcuna modifica al codice.</p>";
-
+      ? "<p class=\"nota-impostazione\">Requisiti soddisfatti.</p>"
+      : "<p class=\"nota-impostazione\">Almeno un requisito non è soddisfatto: i motori neurali potrebbero non funzionare in questo contesto.</p>";
     contenitore.innerHTML = `<ul class="elenco-requisiti">${righe}</ul>${conclusione}`;
-    el("bottone-scarica-voce").disabled = !utilizzabile;
   }
 
-  function popolaVociNeurali(idMotore) {
-    const selettore = el("selettore-voce");
-    selettore.innerHTML = "";
-    MotoreNeurale.vociDi(idMotore).forEach((voce) => {
-      const opzione = document.createElement("option");
-      opzione.value = voce.id;
-      opzione.textContent = voce.nome + (voce.dimensione ? ` ${voce.dimensione}` : "");
-      selettore.appendChild(opzione);
-    });
-    if (selettore.value) ControllerTTS.impostaVoce(selettore.value);
-  }
-
-  async function scaricaVoceNeurale() {
+  /* Preparazione della voce selezionata, con avanzamento visibile.
+     Restituisce true se la voce è pronta. Usata sia dal pulsante di
+     scaricamento sia dalla prova di lettura, così che la prova non
+     resti in silenzio per decine di secondi senza spiegazione. */
+  async function preparaVoceSelezionata(elementoStato) {
     const idMotore = el("selettore-motore").value;
-    const idVoce = el("selettore-voce").value;
-    const stato = el("stato-scaricamento-piper");
-    const bottone = el("bottone-scarica-voce");
-    bottone.disabled = true;
-    stato.style.whiteSpace = "normal";
-    stato.textContent = "Scaricamento del modello (circa 40 MB, una sola volta)…";
+    const voce = voceNeuraleCorrente();
+    if (!voce) return false;
+    if (MotoreNeurale.ePronto(idMotore, voce.id)) return true;
+
+    elementoStato.style.whiteSpace = "normal";
+    elementoStato.textContent = `Preparazione di ${voce.nome.split(" —")[0]} (${voce.dimensione}, solo la prima volta)…`;
     try {
-      await MotoreNeurale.scaricaModello(idMotore, idVoce, (percentuale, file) => {
-        const nome = file ? ` (${String(file).split("/").pop()})` : "";
-        stato.textContent = percentuale === null
-          ? `Scaricamento in corso…${nome}`
-          : `Scaricamento: ${percentuale}%${nome}`;
+      await MotoreNeurale.prepara(idMotore, voce.id, (percentuale, file) => {
+        const nomeFile = file ? ` — ${String(file).split("/").pop()}` : "";
+        elementoStato.textContent = percentuale === null
+          ? `Scaricamento in corso${nomeFile}…`
+          : `Scaricamento: ${percentuale}%${nomeFile}`;
       });
-      ControllerTTS.impostaVoce(idVoce);
-      const fornitore = MotoreNeurale.nomeFornitoreAttivo();
-      stato.textContent = `Modello pronto${fornitore ? ` (${fornitore})` : ""}. Resta memorizzato per gli utilizzi successivi.`;
+      elementoStato.textContent = "Voce pronta.";
+      aggiornaStatoVoce();
+      return true;
     } catch (errore) {
-      stato.textContent = `Non riuscito: ${errore.message || errore}\n\nDettaglio dei tentativi:\n${MotoreNeurale.ottieniDiario()}`;
-      stato.style.whiteSpace = "pre-wrap";
-    } finally {
-      bottone.disabled = false;
+      elementoStato.style.whiteSpace = "pre-wrap";
+      elementoStato.textContent = `Preparazione non riuscita: ${errore.message || errore}\n\nDettaglio:\n${MotoreNeurale.ottieniDiario()}`;
+      return false;
     }
   }
 
@@ -5196,71 +5282,53 @@ const ControllerTTS = (() => {
       selettoreMotore.appendChild(opzione);
     });
 
-    const aggiornaListaVoci = () => {
-      const selettoreVoce = el("selettore-voce");
-      const voci = ControllerTTS.elencaVoci();
-      selettoreVoce.innerHTML = "";
-      if (!voci.length) {
-        const opzione = document.createElement("option");
-        opzione.textContent = "Nessuna voce disponibile";
-        selettoreVoce.appendChild(opzione);
-        return;
-      }
-      voci.forEach((voce) => {
-        const opzione = document.createElement("option");
-        opzione.value = voce.voiceURI;
-        opzione.textContent = `${voce.name} (${voce.lang})`;
-        selettoreVoce.appendChild(opzione);
-      });
-    };
-
-    aggiornaListaVoci();
+    // Le voci di sistema su Android arrivano in modo asincrono: l'elenco
+    // va ricostruito quando il browser le annuncia, ma solo se il
+    // motore attivo è proprio quello di sistema.
     if (window.speechSynthesis) {
-      window.speechSynthesis.onvoiceschanged = aggiornaListaVoci;
+      window.speechSynthesis.onvoiceschanged = () => {
+        if (el("selettore-motore").value === "webspeech") popolaVoci("webspeech");
+      };
     }
 
-    selettoreMotore.addEventListener("change", async (e) => {
-      const idMotore = e.target.value;
-      ControllerTTS.interrompi();
-      ControllerTTS.impostaMotore(idMotore);
-      await LibreriaDB.impostaImpostazione("motore", idMotore);
-      const neurale = idMotore === "neurale";
-      el("sezione-piper").hidden = !neurale;
-      el("riga-tono").hidden = neurale; // il tono è proprietà del modello
-      aggiornaDescrizioneMotore(idMotore);
-      if (neurale) {
-        await popolaVociNeurali(idMotore);
-        await eseguiDiagnosticaMotori();
-      } else {
-        aggiornaListaVoci();
-      }
-      aggiornaInterfacciaEqualizzatore();
-    });
+    selettoreMotore.addEventListener("change", (e) => applicaSceltaMotore(e.target.value));
 
     el("selettore-voce").addEventListener("change", (e) => {
+      const idMotore = el("selettore-motore").value;
+      ControllerTTS.interrompi();
       ControllerTTS.impostaVoce(e.target.value);
-      if (ControllerTTS.motoreAttivo().tipo === "audio") {
-        MotoreNeurale.impostaVocePreferita(e.target.value);
-        el("stato-scaricamento-piper").textContent =
-          "Voce cambiata: premi \"Prepara il modello vocale\" per scaricarla.";
-      }
-      LibreriaDB.impostaImpostazione("voce", e.target.value);
+      LibreriaDB.impostaImpostazione(`voce-${idMotore}`, e.target.value);
+      el("stato-scaricamento-piper").textContent = "";
+      aggiornaStatoVoce();
     });
-    el("bottone-scarica-voce").addEventListener("click", scaricaVoceNeurale);
+
+    el("bottone-scarica-voce").addEventListener("click", async () => {
+      const bottone = el("bottone-scarica-voce");
+      bottone.disabled = true;
+      try {
+        await preparaVoceSelezionata(el("stato-scaricamento-piper"));
+      } finally {
+        bottone.disabled = false;
+      }
+    });
+
     el("bottone-riverifica-piper").addEventListener("click", eseguiDiagnosticaMotori);
+
     el("bottone-prova-voce").addEventListener("click", async () => {
       const bottone = el("bottone-prova-voce");
       const stato = el("stato-prova-voce");
       const frase = FRASI_DI_PROVA[parseInt(el("selettore-frase-prova").value, 10)];
       if (!frase) return;
       bottone.disabled = true;
-      // Con un motore neurale la prima sintesi comporta il caricamento
-      // del modello: senza questo avviso il silenzio iniziale sembra un
-      // guasto, che è esattamente l'equivoco emerso con Piper.
-      stato.textContent = ControllerTTS.motoreAttivo().tipo === "audio"
-        ? "Sintesi in corso… al primo utilizzo occorre attendere il caricamento del modello."
-        : "Riproduzione in corso…";
+      stato.style.whiteSpace = "normal";
       try {
+        if (eMotoreNeurale(el("selettore-motore").value)) {
+          const pronta = await preparaVoceSelezionata(stato);
+          if (!pronta) return;
+          stato.textContent = "Sintesi della frase in corso…";
+        } else {
+          stato.textContent = "Riproduzione in corso…";
+        }
         await ControllerTTS.provaVoce(frase.testo);
         stato.textContent = "";
       } catch (errore) {
@@ -5577,12 +5645,7 @@ const ControllerTTS = (() => {
         // diverso da quello realmente in uso.
         const attivo = ControllerTTS.motoreAttivo();
         if (el("selettore-motore").value !== attivo.id) {
-          el("selettore-motore").value = attivo.id;
-          el("sezione-piper").hidden = attivo.tipo !== "audio";
-          el("riga-tono").hidden = attivo.tipo === "audio";
-          aggiornaDescrizioneMotore(attivo.id);
-          aggiornaListaVoci();
-          aggiornaInterfacciaEqualizzatore();
+          aggiornaInterfacciaMotore(attivo.id);
           LibreriaDB.impostaImpostazione("motore", attivo.id);
         }
       },
@@ -5622,16 +5685,8 @@ const ControllerTTS = (() => {
        permanente. Il motore neurale va quindi riselezionato a mano ad
        ogni sessione, che è un piccolo fastidio in cambio della certezza
        di poter sempre aprire l'applicazione e leggere. */
-    const motoreSalvato = "webspeech";
-    ControllerTTS.impostaMotore(motoreSalvato);
-    el("selettore-motore").value = motoreSalvato;
-    if (motoreSalvato === "neurale") {
-      el("sezione-piper").hidden = false;
-      el("riga-tono").hidden = true;
-      popolaVociNeurali(motoreSalvato);
-      eseguiDiagnosticaMotori();
-    }
-    aggiornaDescrizioneMotore(motoreSalvato);
+    ControllerTTS.impostaMotore("webspeech");
+    await aggiornaInterfacciaMotore("webspeech");
 
     popolaFrasiDiProva();
 
@@ -5644,8 +5699,6 @@ const ControllerTTS = (() => {
     if (eqSalvato) ControllerTTS.impostaEqualizzatore(eqSalvato);
     aggiornaInterfacciaEqualizzatore();
 
-    const voceSalvata = await LibreriaDB.ottieniImpostazione("voce", null);
-    if (voceSalvata) ControllerTTS.impostaVoce(voceSalvata);
 
     impostazioniLettura.spezzaFrasiLunghe = await LibreriaDB.ottieniImpostazione("spezzaFrasiLunghe", true);
     impostazioniLettura.limiteCaratteri = await LibreriaDB.ottieniImpostazione("limiteCaratteri", 250);
