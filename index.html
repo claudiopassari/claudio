@@ -1428,6 +1428,7 @@ select:focus-visible,
 
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/epubjs/0.3.93/epub.min.js"></script>
 <script>
 /* ===== js/db.js ===== */
@@ -2651,13 +2652,35 @@ function appiattisciTocEpub(voci, risultato = []) {
   return risultato;
 }
 
+/* Attesa con limite di tempo. epub.js, quando qualcosa va storto nella
+   fase di apertura, spesso non rifiuta la propria promessa ma la lascia
+   in sospeso per sempre: senza limite, l'importazione resta bloccata a
+   tempo indeterminato con la schermata di caricamento accesa. */
+function conLimite(promessa, millisecondi, descrizione) {
+  let timer = null;
+  return Promise.race([
+    promessa,
+    new Promise((_, rifiuta) => {
+      timer = setTimeout(() => rifiuta(new Error(`${descrizione}: nessuna risposta entro ${Math.round(millisecondi / 1000)} secondi.`)), millisecondi);
+    }),
+  ]).finally(() => clearTimeout(timer));
+}
+
 async function analizzaEPUB(arrayBuffer) {
   if (!window.ePub) {
     throw new Error("Libreria epub.js non disponibile (verificare la connessione al primo avvio).");
   }
+  /* Un EPUB è un archivio ZIP: epub.js lo apre tramite JSZip, che però
+     NON è incluso nel suo pacchetto e va caricato a parte come libreria
+     globale. In sua assenza epub.js non segnala alcun errore: la sua
+     promessa "ready" resta in sospeso per sempre. Era la causa del
+     mancato caricamento degli EPUB, presente fin dalle prime versioni. */
+  if (!window.JSZip) {
+    throw new Error("Libreria JSZip non disponibile: serve a epub.js per aprire l'archivio EPUB (verificare la connessione al primo avvio).");
+  }
 
   const libro = ePub(arrayBuffer);
-  await libro.ready;
+  await conLimite(libro.ready, 60000, "Apertura dell'EPUB");
 
   const frasi = [];
   const metaFrasi = [];
@@ -2669,7 +2692,7 @@ async function analizzaEPUB(arrayBuffer) {
     try {
       const sezione = libro.spine.get(voceSpine.href);
       if (!sezione) continue;
-      const documento = await sezione.load(libro.load.bind(libro));
+      const documento = await conLimite(sezione.load(libro.load.bind(libro)), 20000, "Lettura di una sezione");
       const hrefNormalizzato = normalizzaHrefEpub(voceSpine.href);
       if (!(hrefNormalizzato in mappaHrefIndiceFrase)) {
         mappaHrefIndiceFrase[hrefNormalizzato] = frasi.length;
@@ -2731,7 +2754,7 @@ async function analizzaEPUB(arrayBuffer) {
 
   let capitoli = [];
   try {
-    const navigazione = await libro.loaded.navigation;
+    const navigazione = await conLimite(libro.loaded.navigation, 15000, "Lettura dell'indice");
     const vociToc = appiattisciTocEpub((navigazione && navigazione.toc) || []);
     capitoli = vociToc
       .map((voce) => {
@@ -2761,19 +2784,20 @@ async function analizzaEPUB(arrayBuffer) {
 
   let titolo = null, autore = null;
   try {
-    const metadati = await libro.loaded.metadata;
+    const metadati = await conLimite(libro.loaded.metadata, 15000, "Lettura dei metadati");
     titolo = metadati.title || null;
     autore = metadati.creator || null;
   } catch (e) { /* metadati assenti: non bloccante */ }
 
-  try { libro.destroy(); } catch (e) { /* non bloccante */ }
-
-  // Copertina: epub.js espone coverUrl(), che restituisce un blob URL.
+  // Copertina, estratta PRIMA di libro.destroy(): in precedenza avveniva
+  // dopo, ad archivio già smontato, producendo un errore silenzioso o
+  // un'attesa senza fine a seconda del libro.
+  // epub.js espone coverUrl(), che restituisce un blob URL.
   // Lo si converte in data URL perché il blob URL decade alla chiusura
   // della pagina, mentre la copertina deve sopravvivere nel database.
   let copertina = null;
   try {
-    const urlCopertina = await libro.coverUrl();
+    const urlCopertina = await conLimite(libro.coverUrl(), 10000, "Estrazione della copertina");
     if (urlCopertina) {
       const risposta = await fetch(urlCopertina);
       const blob = await risposta.blob();
@@ -2786,6 +2810,10 @@ async function analizzaEPUB(arrayBuffer) {
       URL.revokeObjectURL(urlCopertina);
     }
   } catch (e) { /* copertina assente o non estraibile: non bloccante */ }
+
+  try { libro.destroy(); } catch (e) { /* non bloccante */ }
+
+
 
   return { frasi, metaFrasi, capitoli: capitoliUnici, titolo, autore, copertina, fonteIndice: capitoliUnici.length ? "toc" : null };
 }
@@ -3015,7 +3043,8 @@ function attivaIntercettazionePiper(annota) {
     if (riscritto !== indirizzo) {
       annota(`Reindirizzato: ${indirizzo.split("/").pop()} → ${riscritto.replace("https://huggingface.co/", "")}`);
       const richiesta = fetchOriginale(riscritto, opzioni);
-      if (/\.onnx(\?|$)/.test(riscritto)) richiesta.then(ispezionaRisposta).catch((errore) => {
+      const nomeVeicolo = indirizzo.split("/").pop().split("?")[0];
+      if (/\.onnx(\?|$)/.test(riscritto)) richiesta.then((r) => ispezionaRisposta(r, nomeVeicolo)).catch((errore) => {
         annota(`DIAGNOSI rete: richiesta del modello fallita — ${errore.name}: ${errore.message}`);
       });
       return richiesta;
@@ -3040,11 +3069,16 @@ function attivaIntercettazionePiper(annota) {
    Per leggere i primi byte senza raddoppiare l'occupazione di memoria
    si legge un solo frammento da una copia della risposta, poi si
    annulla la copia: l'originale prosegue intatto verso la libreria. */
-async function ispezionaRisposta(risposta) {
+// Dimensione dichiarata dal server per ciascun file veicolo: serve a
+// riconoscere quando la scrittura nell'archivio è davvero completa.
+const dimensioniAttese = {};
+
+async function ispezionaRisposta(risposta, nomeVeicolo) {
   try {
-    const nome = (risposta.url || "").split("/").pop().split("?")[0] || "(sconosciuto)";
+    const nome = nomeVeicolo || (risposta.url || "").split("/").pop().split("?")[0] || "(sconosciuto)";
     const tipo = risposta.headers.get("content-type") || "non dichiarato";
     const dimensione = parseInt(risposta.headers.get("content-length") || "0", 10);
+    if (nomeVeicolo && dimensione > 0) dimensioniAttese[nomeVeicolo] = dimensione;
     const destinazione = (risposta.url || "").replace(/^https:\/\/([^/]+).*$/, "$1");
     let primiByte = "non leggibili";
     try {
@@ -3065,6 +3099,94 @@ async function ispezionaRisposta(risposta) {
   }
 }
 
+function formattaDimensione(byte) {
+  return byte >= 1048576 ? `${(byte / 1048576).toFixed(1)} MB` : `${(byte / 1024).toFixed(1)} KB`;
+}
+
+/* ---------- Attesa del completamento della scrittura ----------
+
+   CAUSA ACCERTATA del guasto di Serena alta, dalla diagnostica sul
+   campo: la funzione download della libreria si conclude quando ha
+   ricevuto i dati dalla rete, NON quando ha finito di scriverli
+   nell'archivio del dispositivo. Durante la scrittura Chrome tiene il
+   contenuto in un file temporaneo ".crswap" e il file definitivo
+   risulta vuoto. Se la sintesi parte in quell'intervallo, legge un
+   modello vuoto e fallisce con "No graph was found in the protobuf".
+
+   Registro del collaudo: al momento del fallimento, "…onnx = 0.0 MB" e
+   "…onnx.crswap = 25.7 MB", su 108,9 MB attesi. Con i modelli da 60 MB
+   la scrittura finisce di norma prima della lettura; con 109 MB perde
+   sempre la corsa.
+
+   Rimedio: dopo lo scaricamento si sorveglia l'archivio finché il file
+   esiste, non ha più un file temporaneo in scrittura, e ha la
+   dimensione dichiarata dal server (o, in mancanza di questa, una
+   dimensione stabile per due controlli consecutivi). */
+
+async function statoFileArchivio(nomeFile) {
+  const radice = await navigator.storage.getDirectory();
+  const esito = { dimensione: null, temporaneo: 0, inScrittura: false };
+  const visita = async (cartella, profondita) => {
+    if (profondita > 4) return;
+    for await (const [nome, gestore] of cartella.entries()) {
+      if (gestore.kind === "file") {
+        if (nome === nomeFile) esito.dimensione = (await gestore.getFile()).size;
+        // Corrispondenza esatta: con startsWith il temporaneo del .json
+        // ("…onnx.json.crswap") verrebbe scambiato per quello del modello.
+        else if (nome === `${nomeFile}.crswap`) {
+          esito.inScrittura = true;
+          esito.temporaneo = (await gestore.getFile()).size;
+        }
+      } else {
+        await visita(gestore, profondita + 1);
+      }
+    }
+  };
+  await visita(radice, 0);
+  return esito;
+}
+
+async function attendiScritturaCompleta(nomeFile, alProgresso, annota) {
+  if (!navigator.storage || typeof navigator.storage.getDirectory !== "function") return;
+  const attesa = dimensioniAttese[nomeFile] || 0;
+  const limite = Date.now() + 300000;
+  const inizio = Date.now();
+  let precedente = -1;
+  let stabili = 0;
+  let ultimoAvviso = 0;
+
+  while (Date.now() < limite) {
+    const stato = await statoFileArchivio(nomeFile);
+    if (stato.dimensione !== null && !stato.inScrittura) {
+      if (attesa > 0 && stato.dimensione === attesa) {
+        annota(`Scrittura di ${nomeFile} completata (${formattaDimensione(stato.dimensione)}) in ${Math.round((Date.now() - inizio) / 1000)} s.`);
+        return;
+      }
+      if (stato.dimensione > 0) {
+        stabili = stato.dimensione === precedente ? stabili + 1 : 0;
+        // Senza dimensione dichiarata bastano due controlli stabili. Con
+        // dimensione dichiarata ma diversa da quella memorizzata (una
+        // compressione in transito può produrre questa differenza) se ne
+        // richiedono quattro, per non attendere invano fino al limite.
+        if (stabili >= (attesa ? 4 : 2)) {
+          annota(`Scrittura di ${nomeFile} stabile a ${formattaDimensione(stato.dimensione)}${attesa ? ` (dichiarati ${formattaDimensione(attesa)})` : ""}.`);
+          return;
+        }
+      }
+    }
+    precedente = stato.dimensione;
+    if (alProgresso && attesa && stato.inScrittura) {
+      alProgresso(Math.min(99, Math.round((stato.temporaneo / attesa) * 100)), "memorizzazione sul dispositivo");
+    }
+    if (Date.now() - ultimoAvviso > 5000) {
+      ultimoAvviso = Date.now();
+      annota(`Attesa scrittura di ${nomeFile}: ${stato.inScrittura ? `in corso, ${formattaDimensione(stato.temporaneo)}` : `file ${stato.dimensione === null ? "non ancora presente" : formattaDimensione(stato.dimensione)}`}${attesa ? ` su ${formattaDimensione(attesa)}` : ""}.`);
+    }
+    await new Promise((risolvi) => setTimeout(risolvi, 500));
+  }
+  throw new Error(`La memorizzazione di ${nomeFile} sul dispositivo non si è completata entro cinque minuti.`);
+}
+
 /* Contenuto effettivo dell'archivio del dispositivo: rivela se il
    modello è stato scritto per intero, in parte o per niente. */
 async function descriviArchivio() {
@@ -3078,7 +3200,7 @@ async function descriviArchivio() {
         if (gestore.kind === "file") {
           if (/onnx|lessac|serena|paola|riccardo/i.test(nome)) {
             const file = await gestore.getFile();
-            voci.push(`${prefisso}${nome} = ${(file.size / 1048576).toFixed(1)} MB`);
+            voci.push(`${prefisso}${nome} = ${formattaDimensione(file.size)}`);
           }
         } else {
           await visita(gestore, `${prefisso}${nome}/`, profondita + 1);
@@ -3103,14 +3225,10 @@ const CATALOGO_NEURALE = {
     /* "id" è ciò che l'utente sceglie; "idLibreria" è l'identificativo
        effettivamente passato alla libreria (il veicolo, per Serena). */
     voci: [
-      /* Serena in qualità alta: PROBLEMA APERTO. Due collaudi, da due
-         fonti indipendenti, falliscono con "No graph was found in the
-         protobuf" dopo uno scaricamento apparentemente completo. La
-         versione media, stesso autore e stessa procedura, funziona. La
-         causa non è ancora stabilita: la diagnostica registrata durante
-         la preparazione (esito della richiesta, byte ricevuti, dimensione
-         memorizzata, intestazione del file) serve a distinguere fra
-         scaricamento corrotto, scrittura fallita e formato illeggibile. */
+      /* Serena in qualità alta falliva con "No graph was found in the
+         protobuf". Causa accertata dalla diagnostica sul campo: la
+         verifica partiva prima che la libreria avesse finito di scrivere
+         il modello nell'archivio (vedi attendiScritturaCompleta). */
       { id: "it_IT-serena-medium", idLibreria: "en_US-lessac-medium", nome: "Serena — italiano neutro, la più naturale (consigliata)", dimensione: "circa 60 MB" },
       { id: "it_IT-serena-high", idLibreria: "en_US-lessac-high", nome: "Serena — qualità alta (sperimentale)", dimensione: "circa 110 MB" },
       { id: "it_IT-paola-medium", idLibreria: "it_IT-paola-medium", nome: "Paola — italiano, qualità media", dimensione: "circa 63 MB" },
@@ -3329,7 +3447,10 @@ const MotoreNeurale = (() => {
           annota(`Scaricamento della voce ${idVoce}…`);
           const inizio = Date.now();
           await modulo.download(idLibreria, riferitoreProgresso(alProgresso));
-          annota(`DIAGNOSI scaricamento concluso in ${Math.round((Date.now() - inizio) / 1000)} s. Archivio: ${await descriviArchivio()}`);
+          annota(`Rete: dati ricevuti in ${Math.round((Date.now() - inizio) / 1000)} s. Attendo che siano scritti sul dispositivo…`);
+          await attendiScritturaCompleta(`${idLibreria}.onnx`, alProgresso, annota);
+          await attendiScritturaCompleta(`${idLibreria}.onnx.json`, null, annota);
+          annota(`DIAGNOSI archivio prima della verifica: ${await descriviArchivio()}`);
         } else if (presente) {
           annota(`Voce ${idVoce} già presente e verificata.`);
         }
@@ -4334,7 +4455,7 @@ const ControllerTTS = (() => {
   const AMPIEZZA_FINESTRA = 60;
   const MARGINE_RICOSTRUZIONE = 15;
   const INTERVALLO_MINIMO_SALVATAGGIO_MS = 3000;
-  const VERSIONE_APP = "6.4";
+  const VERSIONE_APP = "6.6";
   const DATA_VERSIONE_APP = "17 settembre 2026";
 
   const DIMENSIONI_CARATTERE = [0.88, 0.96, 1.04, 1.14, 1.26, 1.4, 1.56];
