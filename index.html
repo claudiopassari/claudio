@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#1F4B4A">
-<title>CL-audio 6.9 — Audio Library Converter</title>
+<title>CL-audio 6.10 — Audio Library Converter</title>
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
@@ -1445,9 +1445,9 @@ select:focus-visible,
 <!-- Librerie di parsing (da CDN, messe in cache dal service worker dopo il primo avvio) -->
 
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/epubjs/0.3.93/epub.min.js"></script>
+<script crossorigin="anonymous" src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script crossorigin="anonymous" src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script crossorigin="anonymous" src="https://cdn.jsdelivr.net/npm/epubjs@0.3.93/dist/epub.min.js"></script>
 <script>
 /* ===== js/db.js ===== */
 /* =========================================================
@@ -4505,7 +4505,7 @@ const ControllerTTS = (() => {
   const AMPIEZZA_FINESTRA = 60;
   const MARGINE_RICOSTRUZIONE = 15;
   const INTERVALLO_MINIMO_SALVATAGGIO_MS = 3000;
-  const VERSIONE_APP = "6.9";
+  const VERSIONE_APP = "6.10";
   const DATA_VERSIONE_APP = "17 settembre 2026";
 
   const DIMENSIONI_CARATTERE = [0.88, 0.96, 1.04, 1.14, 1.26, 1.4, 1.56];
@@ -6357,6 +6357,30 @@ const ControllerTTS = (() => {
     // sapere con certezza quale revisione è effettivamente in esecuzione
     // (la cache del browser può servirne una diversa da quella pubblicata).
     el("versione-logo").textContent = VERSIONE_APP;
+
+    /* Verifica delle librerie esterne all'avvio. L'indirizzo di epub.js
+       era sbagliato fin dalla prima versione e la libreria non veniva
+       mai caricata, ma nulla lo segnalava: l'errore emergeva solo al
+       tentativo di importare un EPUB, con un messaggio che suggeriva un
+       problema di connessione. Ora ogni avvio annota nel registro quali
+       librerie sono presenti, e un'assenza viene segnalata subito. */
+    const librerie = [
+      ["pdf.js", "pdfjsLib", "PDF"],
+      ["JSZip", "JSZip", "EPUB"],
+      ["epub.js", "ePub", "EPUB"],
+    ];
+    const assenti = librerie.filter(([, globale]) => typeof window[globale] === "undefined");
+    ControllerTTS.registraEsterno(
+      "AVVIO",
+      `CL-audio ${VERSIONE_APP}. Librerie: ${librerie.map(([nome, globale]) => `${nome} ${typeof window[globale] === "undefined" ? "ASSENTE" : "presente"}`).join(", ")}`
+    );
+    if (assenti.length) {
+      const formati = [...new Set(assenti.map(([, , formato]) => formato))].join(" e ");
+      mostraToast(
+        `Non è stato possibile caricare ${assenti.map(([nome]) => nome).join(", ")}: l'importazione dei file ${formati} non funzionerà. Verifica la connessione e riapri l'applicazione.`,
+        9000
+      );
+    }
 
     // Dopo un aggiornamento forzato l'indirizzo contiene un parametro
     // usato solo per aggirare le copie memorizzate: lo si rimuove, così

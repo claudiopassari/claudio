@@ -29,7 +29,7 @@
    la versione precedente dalla cache.
    ========================================================= */
 
-const NOME_CACHE = "claudio-v6.9";
+const NOME_CACHE = "claudio-v6.10";
 
 const GUSCIO_APPLICAZIONE = [
   "./",
@@ -42,6 +42,7 @@ const GUSCIO_APPLICAZIONE = [
 
 const ORIGINI_LIBRERIE = [
   "https://cdnjs.cloudflare.com",
+  "https://cdn.jsdelivr.net",
   "https://esm.sh",
 ];
 
@@ -81,9 +82,14 @@ self.addEventListener("fetch", (evento) => {
       caches.match(richiesta).then((memorizzata) => {
         if (memorizzata) return memorizzata;
         return fetch(richiesta).then((risposta) => {
-          // Le risposte opache (no-cors) non sono ispezionabili ma
-          // restano utilizzabili: si memorizzano comunque.
-          if (risposta && (risposta.ok || risposta.type === "opaque")) {
+          /* Solo risposte con esito verificato. Le risposte opache
+             venivano memorizzate "comunque", ma una risposta opaca può
+             nascondere un 404: una libreria inesistente sarebbe stata
+             conservata come valida e servita per sempre, anche dopo aver
+             corretto l'indirizzo altrove. I tag delle librerie hanno ora
+             l'attributo crossorigin, quindi le loro risposte non sono
+             più opache e l'esito è leggibile. */
+          if (risposta && risposta.ok) {
             const copia = risposta.clone();
             caches.open(NOME_CACHE).then((cache) => cache.put(richiesta, copia));
           }
