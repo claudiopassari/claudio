@@ -1359,7 +1359,7 @@ select:focus-visible,
     <div class="riga-impostazione" id="riga-tono">
       <label for="slider-tono">Tono della voce: <span id="tono-etichetta">1.0</span></label>
       <input type="range" id="slider-tono" min="0.5" max="2" step="0.1" value="1">
-      <p class="nota-impostazione">Il tono è regolabile solo con la sintesi di sistema: nei motori neurali è una caratteristica del modello vocale, non un parametro di riproduzione.</p>
+      <p class="nota-impostazione">Regolabile con ogni motore. Nei motori neurali l'altezza viene modificata senza alterare la velocità di lettura; valori estremi possono rendere la voce meno naturale.</p>
     </div>
 
     <div class="riga-impostazione" id="sezione-equalizzatore-impostazioni">
@@ -2930,9 +2930,8 @@ async function analizzaMOBI(file) {
    ESITI DEI COLLAUDI SUL CAMPO, che determinano il catalogo:
    - Piper: funziona con voci italiane autentiche (verificato con
      Riccardo).
-   - Kokoro: il modello carica, ma la libreria kokoro-js espone solo
-     voci inglesi e britanniche. Resta disponibile, dichiarato come
-     tale: sul testo italiano pronuncia con fonetica inglese.
+   - Kokoro: RIMOSSO. La libreria kokoro-js espone solo voci inglesi e
+     gira sul thread principale, bloccando l'intera applicazione.
    - MMS: nessun modello italiano esiste; i modelli di lingue affini
      leggono l'italiano con accento straniero, comprensibile.
 
@@ -2942,37 +2941,84 @@ async function analizzaMOBI(file) {
    backend a thread singolo, pena l'errore "no available backend".
    ========================================================= */
 
+/* ---------- Reindirizzamento del catalogo Piper ----------
+
+   La libreria vits-web scarica le voci da un indirizzo fisso,
+   "diffusionstudio/piper-voices", che è una COPIA del catalogo
+   ufficiale fotografata il 5 luglio 2024 e mai più aggiornata. Le voci
+   pubblicate dopo quella data non vi compaiono: chiedendo Paola, Hugging
+   Face risponde con il testo "Entry not found", che la libreria tenta
+   poi di leggere come JSON — da cui l'errore "Unexpected token 'E'".
+
+   Il catalogo ufficiale "rhasspy/piper-voices" ha la stessa identica
+   struttura di cartelle ed è aggiornato: basta riscrivere l'indirizzo
+   base delle richieste.
+
+   Per Serena serve un passo in più. L'elenco interno delle voci della
+   libreria è fermo al 2024 e non la conosce: passandole
+   "it_IT-serena-high" si otterrebbe un identificativo sconosciuto. Si
+   usa quindi un identificativo che la libreria conosce come VEICOLO, e
+   se ne dirottano i file verso quelli di Serena. Funziona perché tutto
+   ciò che distingue una voce — lingua di fonemizzazione, tabella dei
+   fonemi, frequenza di campionamento — sta nel file .onnx.json scaricato,
+   non nell'identificativo. Le voci veicolo scelte sono inglesi, quindi
+   non sottraggono nulla di utile. */
+
+const BASE_COPIA_PIPER = "https://huggingface.co/diffusionstudio/piper-voices/resolve/main/";
+const BASE_UFFICIALE_PIPER = "https://huggingface.co/rhasspy/piper-voices/resolve/main/";
+
+const VEICOLI_PIPER = {
+  "en_US-lessac-high": "it/it_IT/serena/high/it_IT-serena-high",
+  "en_US-lessac-medium": "it/it_IT/serena/medium/it_IT-serena-medium",
+};
+
+function riscriviIndirizzoPiper(indirizzo) {
+  if (typeof indirizzo !== "string" || !indirizzo.startsWith(BASE_COPIA_PIPER)) return indirizzo;
+  const percorso = indirizzo.slice(BASE_COPIA_PIPER.length);
+  for (const [veicolo, destinazione] of Object.entries(VEICOLI_PIPER)) {
+    const corrispondenza = percorso.match(new RegExp(`(?:^|/)${veicolo.replace(/[-.]/g, "\\$&")}(\\.onnx(?:\\.json)?)(\\?.*)?$`));
+    if (corrispondenza) return BASE_UFFICIALE_PIPER + destinazione + corrispondenza[1];
+  }
+  return BASE_UFFICIALE_PIPER + percorso;
+}
+
+let intercettazioneAttiva = false;
+function attivaIntercettazionePiper(annota) {
+  if (intercettazioneAttiva || typeof window === "undefined" || !window.fetch) return;
+  intercettazioneAttiva = true;
+  const fetchOriginale = window.fetch.bind(window);
+  window.fetch = (risorsa, opzioni) => {
+    const indirizzo = typeof risorsa === "string"
+      ? risorsa
+      : (risorsa && (risorsa.href || risorsa.url)) || "";
+    const riscritto = riscriviIndirizzoPiper(indirizzo);
+    if (riscritto !== indirizzo) {
+      annota(`Reindirizzato: ${indirizzo.split("/").pop()} → ${riscritto.replace(BASE_UFFICIALE_PIPER, "catalogo ufficiale/")}`);
+      return fetchOriginale(riscritto, opzioni);
+    }
+    return fetchOriginale(risorsa, opzioni);
+  };
+}
+
 const CATALOGO_NEURALE = {
   piper: {
     tipo: "vits",
     urlModulo: "https://cdn.jsdelivr.net/npm/@diffusionstudio/vits-web@1.0.3/+esm",
-    /* Il suffisso indica il livello qualitativo: "x_low" è il gradino
-       più basso della scala Piper (modello minuscolo, 16 kHz);
-       "medium" usa un modello più grande a 22 kHz, con differenza
-       udibile. */
+    /* "id" è ciò che l'utente sceglie; "idLibreria" è l'identificativo
+       effettivamente passato alla libreria (il veicolo, per Serena). */
     voci: [
-      { id: "it_IT-paola-medium", nome: "Paola — italiano, qualità media (consigliata)", dimensione: "circa 63 MB" },
-      { id: "it_IT-riccardo-x_low", nome: "Riccardo — italiano, qualità bassa ma leggera", dimensione: "circa 20 MB" },
-    ],
-  },
-  kokoro: {
-    tipo: "kokoro",
-    urlModulo: "https://cdn.jsdelivr.net/npm/kokoro-js@1.2.1/+esm",
-    modello: "onnx-community/Kokoro-82M-v1.0-ONNX",
-    voci: [
-      { id: "af_heart", nome: "Heart — inglese americano, femminile", dimensione: "circa 86 MB" },
-      { id: "af_bella", nome: "Bella — inglese americano, femminile", dimensione: "circa 86 MB" },
-      { id: "am_michael", nome: "Michael — inglese americano, maschile", dimensione: "circa 86 MB" },
-      { id: "bf_emma", nome: "Emma — inglese britannico, femminile", dimensione: "circa 86 MB" },
-      { id: "bm_george", nome: "George — inglese britannico, maschile", dimensione: "circa 86 MB" },
+      { id: "it_IT-serena-high", idLibreria: "en_US-lessac-high", nome: "Serena — italiano neutro, qualità alta (consigliata)", dimensione: "circa 110 MB" },
+      { id: "it_IT-serena-medium", idLibreria: "en_US-lessac-medium", nome: "Serena — italiano neutro, qualità media", dimensione: "circa 60 MB" },
+      { id: "it_IT-paola-medium", idLibreria: "it_IT-paola-medium", nome: "Paola — italiano, qualità media", dimensione: "circa 63 MB" },
+      { id: "it_IT-riccardo-x_low", idLibreria: "it_IT-riccardo-x_low", nome: "Riccardo — italiano, qualità bassa ma leggera", dimensione: "circa 20 MB" },
     ],
   },
   mms: {
     tipo: "transformers",
     urlModulo: "https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.5.1",
-    /* Lo spagnolo precede le altre lingue perché condivide con
-       l'italiano quasi per intero il sistema vocalico e le regole fra
-       grafia e suono: il risultato è il più comprensibile dei tre. */
+    /* Non esiste un modello MMS italiano. Lo spagnolo è il più
+       comprensibile perché condivide con l'italiano quasi per intero il
+       sistema vocalico e le regole fra grafia e suono. */
     voci: [
       { id: "Xenova/mms-tts-spa", nome: "Spagnolo — accento straniero, il più comprensibile", dimensione: "circa 40 MB" },
       { id: "Xenova/mms-tts-por", nome: "Portoghese — accento straniero", dimensione: "circa 40 MB" },
@@ -2994,6 +3040,12 @@ const MotoreNeurale = (() => {
   function annota(testo) {
     diario.push(`${new Date().toTimeString().slice(0, 8)} ${testo}`);
     if (diario.length > 60) diario.shift();
+    // Inoltro al registro diagnostico principale: in precedenza questi
+    // eventi restavano in un diario separato e il registro copiato
+    // dall'utente non mostrava nulla della preparazione delle voci.
+    if (typeof ControllerTTS !== "undefined" && ControllerTTS.registraEsterno) {
+      ControllerTTS.registraEsterno("NEURALE", testo);
+    }
   }
 
   function ottieniDiario() { return diario.join("\n"); }
@@ -3090,34 +3142,26 @@ const MotoreNeurale = (() => {
     if (typeof modulo.predict !== "function") {
       throw new Error("La libreria Piper non espone la funzione predict.");
     }
+    attivaIntercettazionePiper(annota);
+    const voce = CATALOGO_NEURALE.piper.voci.find((v) => v.id === idVoce);
+    const idLibreria = voce ? voce.idLibreria : idVoce;
+    if (idLibreria !== idVoce) annota(`${idVoce} viene caricata tramite l'identificativo veicolo ${idLibreria}.`);
+
     if (typeof modulo.download === "function") {
       const presenti = typeof modulo.stored === "function" ? await modulo.stored() : [];
-      if (!presenti.includes(idVoce)) {
+      if (!presenti.includes(idLibreria)) {
         annota(`Scaricamento della voce ${idVoce}…`);
-        await modulo.download(idVoce, riferitoreProgresso(alProgresso));
+        await modulo.download(idLibreria, riferitoreProgresso(alProgresso));
       } else {
         annota(`Voce ${idVoce} già presente sul dispositivo.`);
       }
     }
-    return { genera: (testo) => modulo.predict({ text: testo, voiceId: idVoce }) };
-  }
-
-  async function preparaKokoro(modulo, idVoce, alProgresso) {
-    // Il modello Kokoro è unico per tutte le voci: si carica una volta
-    // e la voce si specifica a ogni sintesi.
-    let istanza = sintetizzatoriPronti.get("kokoro|__modello__");
-    if (!istanza) {
-      const Costruttore = modulo.KokoroTTS || (modulo.default && modulo.default.KokoroTTS);
-      if (!Costruttore) throw new Error("La libreria non espone KokoroTTS.");
-      annota("Caricamento del modello Kokoro…");
-      istanza = await Costruttore.from_pretrained(CATALOGO_NEURALE.kokoro.modello, {
-        dtype: "q8",
-        device: "wasm",
-        progress_callback: riferitoreProgresso(alProgresso),
-      });
-      sintetizzatoriPronti.set("kokoro|__modello__", istanza);
-    }
-    return { genera: (testo) => istanza.generate(testo, { voice: idVoce }) };
+    // Sintesi di verifica immediata: un file scaricato ma incompatibile
+    // deve emergere qui, con un errore esplicito, e non alla prima frase
+    // del libro.
+    const prova = await modulo.predict({ text: "Prova.", voiceId: idLibreria });
+    if (!prova || !prova.size) throw new Error("La sintesi di verifica non ha prodotto audio.");
+    return { genera: (testo) => modulo.predict({ text: testo, voiceId: idLibreria }) };
   }
 
   async function preparaTransformers(modulo, idVoce, alProgresso) {
@@ -3148,7 +3192,6 @@ const MotoreNeurale = (() => {
       const modulo = await caricaModulo(idMotore);
       let sintetizzatore;
       if (voceCatalogo.tipo === "vits") sintetizzatore = await preparaPiper(modulo, idVoce, alProgresso);
-      else if (voceCatalogo.tipo === "kokoro") sintetizzatore = await preparaKokoro(modulo, idVoce, alProgresso);
       else sintetizzatore = await preparaTransformers(modulo, idVoce, alProgresso);
       sintetizzatoriPronti.set(k, sintetizzatore);
       annota(`Pronto: ${idMotore} / ${idVoce}.`);
@@ -3284,12 +3327,6 @@ const REGISTRO_MOTORI = {
     tipo: "audio",
     ottieniVoci() { return vociNeuraliDi("piper"); },
   },
-  kokoro: {
-    id: "kokoro",
-    nome: "Kokoro — voci inglesi",
-    tipo: "audio",
-    ottieniVoci() { return vociNeuraliDi("kokoro"); },
-  },
   mms: {
     id: "mms",
     nome: "MMS — lingue affini all'italiano",
@@ -3342,6 +3379,8 @@ const ControllerTTS = (() => {
     if (registroEventi.length > REGISTRO_MASSIMO_VOCI) registroEventi.shift();
   }
 
+  function registraEsterno(tipo, dettaglio) { registra(tipo, dettaglio); }
+
   function ottieniRegistro() {
     return registroEventi.join("\n");
   }
@@ -3375,7 +3414,7 @@ const ControllerTTS = (() => {
     // Sui motori audio la velocità agisce sulla riproduzione, quindi ha
     // effetto immediato anche sull'unità già in corso; sulla Web Speech
     // API si applica invece solo dalle unità accodate successivamente.
-    if (elementoAudio) elementoAudio.playbackRate = velocita;
+    if (elementoAudio) elementoAudio.playbackRate = velocita / tonoAudioCorrente;
     registra("IMPOSTAZIONE", `velocità: ${velocita}`);
   }
 
@@ -3493,16 +3532,17 @@ const ControllerTTS = (() => {
       // L'eventuale prova precedente va liberata prima di sostituirla:
       // premendo ripetutamente "ascolta un esempio" gli URL si
       // accumulavano, perché onended veniva rimpiazzato senza scattare.
-      if (audio.src && audio.src.startsWith("blob:")) URL.revokeObjectURL(audio.src);
-      const url = URL.createObjectURL(blob);
+      if (audio.src && audio.src.startsWith("blob:")) liberaUrl(audio.src);
+      const blobConTono = await applicaTonoWav(blob, tono);
+      const url = URL.createObjectURL(blobConTono);
+      tonoPerUrl.set(url, blobConTono === blob ? 1 : tono);
       audio.src = url;
-      audio.playbackRate = velocita;
-      audio.volume = volume;
-      audio.onended = () => URL.revokeObjectURL(url);
+      impostaRiproduzioneAudio(audio, url);
+      audio.onended = () => liberaUrl(url);
       try {
         await audio.play();
       } catch (errore) {
-        URL.revokeObjectURL(url);
+        liberaUrl(url);
         throw errore;
       }
       return;
@@ -3751,6 +3791,64 @@ const ControllerTTS = (() => {
     return elementoAudio;
   }
 
+  /* ---------- Tono per i motori audio ----------
+
+     La Web Speech API regola il tono da sé; i motori neurali
+     restituiscono invece un file audio già sintetizzato. Per variarne
+     l'altezza senza alterarne la velocità si combinano due effetti:
+
+     1. Nell'intestazione del WAV si dichiara una frequenza di
+        campionamento moltiplicata per il fattore di tono P. Il browser
+        riproduce gli stessi campioni più in fretta (P > 1) o più
+        lentamente: altezza moltiplicata per P, ma durata divisa per P.
+     2. Si imposta playbackRate = velocità / P con preservesPitch attivo:
+        il browser ristabilisce la durata desiderata mantenendo l'altezza
+        raggiunta al punto 1.
+
+     Risultato: altezza P e velocità indipendenti, senza elaborare il
+     segnale — si modificano solo otto byte dell'intestazione. Se il file
+     non è un WAV riconoscibile, lo si lascia invariato. */
+
+  const tonoPerUrl = new Map();
+  let tonoAudioCorrente = 1;
+
+  async function applicaTonoWav(blob, fattore) {
+    if (!blob || Math.abs(fattore - 1) < 0.01) return blob;
+    const buffer = await blob.arrayBuffer();
+    const vista = new DataView(buffer);
+    if (vista.byteLength < 44) return blob;
+    // "RIFF" ... "WAVE"
+    if (vista.getUint32(0, false) !== 0x52494646 || vista.getUint32(8, false) !== 0x57415645) return blob;
+    let posizione = 12;
+    while (posizione + 8 <= vista.byteLength) {
+      const idBlocco = vista.getUint32(posizione, false);
+      const dimensione = vista.getUint32(posizione + 4, true);
+      if (idBlocco === 0x666d7420) { // "fmt "
+        const frequenza = vista.getUint32(posizione + 12, true);
+        const allineamento = vista.getUint16(posizione + 20, true);
+        const nuovaFrequenza = Math.round(frequenza * fattore);
+        vista.setUint32(posizione + 12, nuovaFrequenza, true);
+        vista.setUint32(posizione + 16, nuovaFrequenza * allineamento, true);
+        return new Blob([buffer], { type: "audio/wav" });
+      }
+      posizione += 8 + dimensione + (dimensione % 2);
+    }
+    return blob;
+  }
+
+  function impostaRiproduzioneAudio(audio, url) {
+    tonoAudioCorrente = tonoPerUrl.get(url) || 1;
+    audio.preservesPitch = true;
+    audio.playbackRate = velocita / tonoAudioCorrente;
+    audio.volume = volume;
+  }
+
+  function liberaUrl(url) {
+    if (!url) return;
+    tonoPerUrl.delete(url);
+    URL.revokeObjectURL(url);
+  }
+
   const TIMEOUT_SINTESI_MS = 90000;
 
   async function generaAudioUnita(indice) {
@@ -3770,7 +3868,10 @@ const ControllerTTS = (() => {
           );
         }),
       ]);
-      return URL.createObjectURL(blob);
+      const blobConTono = await applicaTonoWav(blob, tono);
+      const url = URL.createObjectURL(blobConTono);
+      tonoPerUrl.set(url, blobConTono === blob ? 1 : tono);
+      return url;
     } finally {
       if (timer) clearTimeout(timer);
     }
@@ -3796,7 +3897,7 @@ const ControllerTTS = (() => {
         : await generaAudioUnita(indice);
       generazioneInCorso = null;
       if (!inRiproduzione || generazioneScartata || !urlCorrente) {
-        if (urlCorrente) URL.revokeObjectURL(urlCorrente);
+        if (urlCorrente) liberaUrl(urlCorrente);
         return;
       }
 
@@ -3812,8 +3913,7 @@ const ControllerTTS = (() => {
         try { await contestoAudio.resume(); } catch (e) { /* non bloccante */ }
       }
       audio.src = urlCorrente;
-      audio.playbackRate = velocita;
-      audio.volume = volume;
+      impostaRiproduzioneAudio(audio, urlCorrente);
 
       // Generazione anticipata della prossima unità, avviata subito
       // dopo l'inizio della riproduzione corrente. Sui motori neurali
@@ -3824,13 +3924,13 @@ const ControllerTTS = (() => {
       }
 
       audio.onended = () => {
-        URL.revokeObjectURL(urlCorrente);
+        liberaUrl(urlCorrente);
         if (!inRiproduzione) return;
         registra("END", `unità ${indice + 1} in ${Date.now() - inizioUnitaTimestamp}ms`);
         riproduciSequenzaAudio(indice + 1);
       };
       audio.onerror = () => {
-        URL.revokeObjectURL(urlCorrente);
+        liberaUrl(urlCorrente);
         registra("ERRORE", `riproduzione audio non riuscita su unità ${indice + 1}`);
         inRiproduzione = false;
         alCambioStato(false);
@@ -3865,7 +3965,7 @@ const ControllerTTS = (() => {
     // un libro lungo con molte pause la memoria cresce senza limite.
     if (generazioneInCorso) {
       generazioneInCorso
-        .then((url) => { if (url) URL.revokeObjectURL(url); })
+        .then((url) => liberaUrl(url))
         .catch(() => {});
       generazioneInCorso = null;
     }
@@ -3874,7 +3974,7 @@ const ControllerTTS = (() => {
       elementoAudio.onerror = null;
       elementoAudio.pause();
       if (elementoAudio.src && elementoAudio.src.startsWith("blob:")) {
-        URL.revokeObjectURL(elementoAudio.src);
+        liberaUrl(elementoAudio.src);
       }
       elementoAudio.removeAttribute("src");
     }
@@ -3959,6 +4059,7 @@ const ControllerTTS = (() => {
 
   return {
     motoreAttivo,
+    registraEsterno,
     impostaVolume,
     ottieniVolume,
     impostaEqualizzatore,
@@ -4008,7 +4109,7 @@ const ControllerTTS = (() => {
   const AMPIEZZA_FINESTRA = 60;
   const MARGINE_RICOSTRUZIONE = 15;
   const INTERVALLO_MINIMO_SALVATAGGIO_MS = 3000;
-  const VERSIONE_APP = "6.0";
+  const VERSIONE_APP = "6.1";
   const DATA_VERSIONE_APP = "17 settembre 2026";
 
   const DIMENSIONI_CARATTERE = [0.88, 0.96, 1.04, 1.14, 1.26, 1.4, 1.56];
@@ -4973,8 +5074,7 @@ const ControllerTTS = (() => {
 
   const DESCRIZIONI_MOTORE = {
     webspeech: "Voci del sistema operativo, comprese le voci neurali di Google se installate. Pronuncia italiana corretta, nessuno scaricamento, nessuna attesa. Non equalizzabile: il parlato va direttamente all'uscita audio.",
-    piper: "Voci neurali italiane autentiche, eseguite sul dispositivo. Ogni voce si scarica una sola volta, poi funziona anche senza rete. Equalizzabile. La prima frase richiede qualche secondo.",
-    kokoro: "Modello neurale di alta qualità, ma la libreria disponibile per il browser offre solo voci inglesi: sul testo italiano la pronuncia risulta inglese. Utile per libri in inglese.",
+    piper: "Voci neurali italiane autentiche, eseguite sul dispositivo e scaricate dal catalogo ufficiale Piper. Serena è la più recente e naturale: italiano standard senza inflessioni regionali. Ogni voce si scarica una sola volta, poi funziona anche senza rete. Tono ed equalizzatore regolabili.",
     mms: "Non esiste un modello MMS italiano: queste voci di lingue affini leggono l'italiano con accento straniero. Lo spagnolo è il più comprensibile. Ripiego da usare solo se Piper non funziona.",
   };
 
@@ -5214,7 +5314,6 @@ const ControllerTTS = (() => {
     const neurale = eMotoreNeurale(idMotore);
     el("selettore-motore").value = idMotore;
     el("sezione-piper").hidden = !neurale;
-    el("riga-tono").hidden = neurale; // il tono è proprietà del modello, non regolabile
     el("numero-passo-prova").textContent = neurale ? "4" : "3";
     el("stato-scaricamento-piper").textContent = "";
     el("diagnostica-piper").innerHTML = "";
@@ -5266,6 +5365,7 @@ const ControllerTTS = (() => {
       aggiornaStatoVoce();
       return true;
     } catch (errore) {
+      ControllerTTS.registraEsterno("ERRORE", `preparazione ${idMotore}/${voce.id}: ${errore.message || errore}`);
       elementoStato.style.whiteSpace = "pre-wrap";
       elementoStato.textContent = `Preparazione non riuscita: ${errore.message || errore}\n\nDettaglio:\n${MotoreNeurale.ottieniDiario()}`;
       return false;
@@ -5332,6 +5432,7 @@ const ControllerTTS = (() => {
         await ControllerTTS.provaVoce(frase.testo);
         stato.textContent = "";
       } catch (errore) {
+        ControllerTTS.registraEsterno("ERRORE", `prova di lettura: ${errore.message || errore}`);
         stato.textContent = `Prova non riuscita: ${errore.message || errore}`;
       } finally {
         bottone.disabled = false;
