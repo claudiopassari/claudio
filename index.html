@@ -1021,6 +1021,13 @@ select:focus-visible,
 
 #stato-voce:empty, #stato-scaricamento-piper:empty { display: none; }
 
+.bottone-discreto {
+  width: 100%;
+  margin-top: 6px;
+  font-size: 0.78rem;
+  opacity: 0.8;
+}
+
 </style>
 </head>
 <body>
@@ -1335,6 +1342,7 @@ select:focus-visible,
           <button class="bottone-secondario" id="bottone-scarica-voce">Scarica la voce</button>
         </div>
         <p class="nota-impostazione" id="stato-scaricamento-piper"></p>
+        <button class="bottone-secondario bottone-discreto" id="bottone-elimina-voce">Elimina la voce scaricata</button>
         <div id="diagnostica-piper"></div>
       </div>
 
@@ -2967,17 +2975,29 @@ async function analizzaMOBI(file) {
 const BASE_COPIA_PIPER = "https://huggingface.co/diffusionstudio/piper-voices/resolve/main/";
 const BASE_UFFICIALE_PIPER = "https://huggingface.co/rhasspy/piper-voices/resolve/main/";
 
-const VEICOLI_PIPER = {
-  "en_US-lessac-high": "it/it_IT/serena/high/it_IT-serena-high",
-  "en_US-lessac-medium": "it/it_IT/serena/medium/it_IT-serena-medium",
+/* Ogni voce veicolo ha più fonti, provate in ordine. Serena è entrata
+   nel catalogo ufficiale tramite una richiesta di modifica recente: la
+   fonte d'autore "committa/..." è quella di riferimento, documentata
+   esplicitamente con i nomi dei due file. Per la versione media si
+   mantiene prima il catalogo ufficiale, da cui ha già funzionato. */
+const FONTI_VEICOLI_PIPER = {
+  "en_US-lessac-high": [
+    "https://huggingface.co/committa/it_IT-serena-high/resolve/main/it_IT-serena-high",
+    BASE_UFFICIALE_PIPER + "it/it_IT/serena/high/it_IT-serena-high",
+  ],
+  "en_US-lessac-medium": [
+    BASE_UFFICIALE_PIPER + "it/it_IT/serena/medium/it_IT-serena-medium",
+    "https://huggingface.co/committa/it_IT-serena-medium/resolve/main/it_IT-serena-medium",
+  ],
 };
+const fonteInUso = {};
 
 function riscriviIndirizzoPiper(indirizzo) {
   if (typeof indirizzo !== "string" || !indirizzo.startsWith(BASE_COPIA_PIPER)) return indirizzo;
   const percorso = indirizzo.slice(BASE_COPIA_PIPER.length);
-  for (const [veicolo, destinazione] of Object.entries(VEICOLI_PIPER)) {
+  for (const [veicolo, fonti] of Object.entries(FONTI_VEICOLI_PIPER)) {
     const corrispondenza = percorso.match(new RegExp(`(?:^|/)${veicolo.replace(/[-.]/g, "\\$&")}(\\.onnx(?:\\.json)?)(\\?.*)?$`));
-    if (corrispondenza) return BASE_UFFICIALE_PIPER + destinazione + corrispondenza[1];
+    if (corrispondenza) return fonti[fonteInUso[veicolo] || 0] + corrispondenza[1];
   }
   return BASE_UFFICIALE_PIPER + percorso;
 }
@@ -2993,7 +3013,7 @@ function attivaIntercettazionePiper(annota) {
       : (risorsa && (risorsa.href || risorsa.url)) || "";
     const riscritto = riscriviIndirizzoPiper(indirizzo);
     if (riscritto !== indirizzo) {
-      annota(`Reindirizzato: ${indirizzo.split("/").pop()} → ${riscritto.replace(BASE_UFFICIALE_PIPER, "catalogo ufficiale/")}`);
+      annota(`Reindirizzato: ${indirizzo.split("/").pop()} → ${riscritto.replace("https://huggingface.co/", "")}`);
       return fetchOriginale(riscritto, opzioni);
     }
     return fetchOriginale(risorsa, opzioni);
@@ -3007,8 +3027,8 @@ const CATALOGO_NEURALE = {
     /* "id" è ciò che l'utente sceglie; "idLibreria" è l'identificativo
        effettivamente passato alla libreria (il veicolo, per Serena). */
     voci: [
-      { id: "it_IT-serena-high", idLibreria: "en_US-lessac-high", nome: "Serena — italiano neutro, qualità alta (consigliata)", dimensione: "circa 110 MB" },
-      { id: "it_IT-serena-medium", idLibreria: "en_US-lessac-medium", nome: "Serena — italiano neutro, qualità media", dimensione: "circa 60 MB" },
+      { id: "it_IT-serena-medium", idLibreria: "en_US-lessac-medium", nome: "Serena — italiano neutro, qualità media (consigliata)", dimensione: "circa 60 MB" },
+      { id: "it_IT-serena-high", idLibreria: "en_US-lessac-high", nome: "Serena — qualità alta, più pesante e lenta", dimensione: "circa 110 MB" },
       { id: "it_IT-paola-medium", idLibreria: "it_IT-paola-medium", nome: "Paola — italiano, qualità media", dimensione: "circa 63 MB" },
       { id: "it_IT-riccardo-x_low", idLibreria: "it_IT-riccardo-x_low", nome: "Riccardo — italiano, qualità bassa ma leggera", dimensione: "circa 20 MB" },
     ],
@@ -3138,6 +3158,60 @@ const MotoreNeurale = (() => {
     };
   }
 
+  /* ---------- Integrità dei file memorizzati ----------
+
+     Un file scaricato in modo incompleto, o da una fonte che restituisce
+     altro al posto del modello, resta nell'archivio del dispositivo. La
+     libreria lo considera presente e non lo riscarica: ogni tentativo
+     successivo riusa lo stesso file guasto. Se il guasto produce un
+     errore, si resta bloccati sull'errore; se produce un blocco del
+     motore, si resta con l'applicazione bloccata a ogni prova.
+
+     Rimedio: si annota quali voci veicolo hanno superato almeno una
+     sintesi di verifica. Una voce presente in archivio ma mai
+     verificata viene eliminata e riscaricata prima dell'uso. La
+     verifica si conserva nella memoria locale del browser, così vale
+     anche dopo un blocco e un ricaricamento della pagina, che è
+     esattamente il caso da coprire. */
+
+  function chiaveVerifica(idLibreria) { return `claudio-voce-verificata-${idLibreria}`; }
+  function eVerificata(idLibreria) {
+    try { return localStorage.getItem(chiaveVerifica(idLibreria)) === "1"; } catch (e) { return false; }
+  }
+  function segnaVerifica(idLibreria, riuscita) {
+    try {
+      if (riuscita) localStorage.setItem(chiaveVerifica(idLibreria), "1");
+      else localStorage.removeItem(chiaveVerifica(idLibreria));
+    } catch (e) { /* memoria locale non disponibile: non bloccante */ }
+  }
+
+  async function eliminaDaArchivio(modulo, idLibreria) {
+    if (typeof modulo.remove !== "function") return;
+    try {
+      await modulo.remove(idLibreria);
+      annota(`File di ${idLibreria} eliminati dall'archivio del dispositivo.`);
+    } catch (errore) {
+      annota(`Eliminazione di ${idLibreria} non riuscita: ${errore.message || errore}`);
+    }
+  }
+
+  const TIMEOUT_VERIFICA_MS = 120000;
+
+  async function sintesiDiVerifica(modulo, idLibreria) {
+    let timer = null;
+    try {
+      const prova = await Promise.race([
+        modulo.predict({ text: "Prova.", voiceId: idLibreria }),
+        new Promise((_, rifiuta) => {
+          timer = setTimeout(() => rifiuta(new Error("La voce non ha risposto alla verifica entro due minuti.")), TIMEOUT_VERIFICA_MS);
+        }),
+      ]);
+      if (!prova || !prova.size) throw new Error("La sintesi di verifica non ha prodotto audio.");
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  }
+
   async function preparaPiper(modulo, idVoce, alProgresso) {
     if (typeof modulo.predict !== "function") {
       throw new Error("La libreria Piper non espone la funzione predict.");
@@ -3145,23 +3219,60 @@ const MotoreNeurale = (() => {
     attivaIntercettazionePiper(annota);
     const voce = CATALOGO_NEURALE.piper.voci.find((v) => v.id === idVoce);
     const idLibreria = voce ? voce.idLibreria : idVoce;
-    if (idLibreria !== idVoce) annota(`${idVoce} viene caricata tramite l'identificativo veicolo ${idLibreria}.`);
+    const fonti = FONTI_VEICOLI_PIPER[idLibreria] || [null];
+    const eVeicolo = !!FONTI_VEICOLI_PIPER[idLibreria];
+    if (eVeicolo) annota(`${idVoce} viene caricata tramite l'identificativo veicolo ${idLibreria}.`);
 
-    if (typeof modulo.download === "function") {
-      const presenti = typeof modulo.stored === "function" ? await modulo.stored() : [];
-      if (!presenti.includes(idLibreria)) {
-        annota(`Scaricamento della voce ${idVoce}…`);
-        await modulo.download(idLibreria, riferitoreProgresso(alProgresso));
-      } else {
-        annota(`Voce ${idVoce} già presente sul dispositivo.`);
+    let ultimoErrore = null;
+    for (let indice = 0; indice < fonti.length; indice++) {
+      if (eVeicolo) {
+        fonteInUso[idLibreria] = indice;
+        annota(`Fonte ${indice + 1} di ${fonti.length}: ${fonti[indice].replace("https://huggingface.co/", "")}`);
+      }
+      try {
+        const presenti = typeof modulo.stored === "function" ? await modulo.stored() : [];
+        let presente = presenti.includes(idLibreria);
+
+        // File presente ma mai verificato: potenzialmente guasto, si rifà.
+        if (presente && eVeicolo && !eVerificata(idLibreria)) {
+          annota(`${idVoce} è in archivio ma non ha mai superato la verifica: la riscarico.`);
+          await eliminaDaArchivio(modulo, idLibreria);
+          presente = false;
+        }
+
+        if (!presente && typeof modulo.download === "function") {
+          annota(`Scaricamento della voce ${idVoce}…`);
+          await modulo.download(idLibreria, riferitoreProgresso(alProgresso));
+        } else if (presente) {
+          annota(`Voce ${idVoce} già presente e verificata.`);
+        }
+
+        await sintesiDiVerifica(modulo, idLibreria);
+        segnaVerifica(idLibreria, true);
+        annota(`Verifica superata: ${idVoce}.`);
+        return { genera: (testo) => modulo.predict({ text: testo, voiceId: idLibreria }) };
+      } catch (errore) {
+        ultimoErrore = errore;
+        annota(`Fonte ${indice + 1} non riuscita: ${errore.message || errore}`);
+        // Il file appena ottenuto è inutilizzabile: va eliminato subito,
+        // altrimenti il tentativo con la fonte successiva lo troverebbe
+        // "già presente" e lo riuserebbe.
+        segnaVerifica(idLibreria, false);
+        await eliminaDaArchivio(modulo, idLibreria);
       }
     }
-    // Sintesi di verifica immediata: un file scaricato ma incompatibile
-    // deve emergere qui, con un errore esplicito, e non alla prima frase
-    // del libro.
-    const prova = await modulo.predict({ text: "Prova.", voiceId: idLibreria });
-    if (!prova || !prova.size) throw new Error("La sintesi di verifica non ha prodotto audio.");
-    return { genera: (testo) => modulo.predict({ text: testo, voiceId: idLibreria }) };
+    throw ultimoErrore || new Error("Nessuna fonte disponibile per questa voce.");
+  }
+
+  async function rimuovi(idMotore, idVoce) {
+    const voce = (CATALOGO_NEURALE[idMotore] || { voci: [] }).voci.find((v) => v.id === idVoce);
+    if (!voce) return;
+    sintetizzatoriPronti.delete(chiave(idMotore, idVoce));
+    if (idMotore !== "piper") return;
+    const modulo = await caricaModulo("piper");
+    const idLibreria = voce.idLibreria || idVoce;
+    segnaVerifica(idLibreria, false);
+    await eliminaDaArchivio(modulo, idLibreria);
   }
 
   async function preparaTransformers(modulo, idVoce, alProgresso) {
@@ -3265,6 +3376,7 @@ const MotoreNeurale = (() => {
 
   return {
     prepara,
+    rimuovi,
     ePronto,
     sintetizza,
     vociDi,
@@ -4109,7 +4221,7 @@ const ControllerTTS = (() => {
   const AMPIEZZA_FINESTRA = 60;
   const MARGINE_RICOSTRUZIONE = 15;
   const INTERVALLO_MINIMO_SALVATAGGIO_MS = 3000;
-  const VERSIONE_APP = "6.1";
+  const VERSIONE_APP = "6.2";
   const DATA_VERSIONE_APP = "17 settembre 2026";
 
   const DIMENSIONI_CARATTERE = [0.88, 0.96, 1.04, 1.14, 1.26, 1.4, 1.56];
@@ -5413,6 +5525,25 @@ const ControllerTTS = (() => {
     });
 
     el("bottone-riverifica-piper").addEventListener("click", eseguiDiagnosticaMotori);
+
+    // Via d'uscita manuale: se una voce scaricata risultasse guasta, la
+    // si elimina dal dispositivo e la si può riscaricare da capo.
+    el("bottone-elimina-voce").addEventListener("click", async () => {
+      const idMotore = el("selettore-motore").value;
+      const voce = voceNeuraleCorrente();
+      if (!voce) return;
+      if (!confirm(`Eliminare dal dispositivo la voce "${voce.nome.split(" —")[0]}"? Potrai riscaricarla in seguito.`)) return;
+      const stato = el("stato-scaricamento-piper");
+      stato.textContent = "Eliminazione in corso…";
+      try {
+        ControllerTTS.interrompi();
+        await MotoreNeurale.rimuovi(idMotore, voce.id);
+        stato.textContent = "Voce eliminata. Premi \"Scarica la voce\" per riscaricarla.";
+      } catch (errore) {
+        stato.textContent = `Eliminazione non riuscita: ${errore.message || errore}`;
+      }
+      aggiornaStatoVoce();
+    });
 
     el("bottone-prova-voce").addEventListener("click", async () => {
       const bottone = el("bottone-prova-voce");
