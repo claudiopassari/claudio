@@ -3014,11 +3014,87 @@ function attivaIntercettazionePiper(annota) {
     const riscritto = riscriviIndirizzoPiper(indirizzo);
     if (riscritto !== indirizzo) {
       annota(`Reindirizzato: ${indirizzo.split("/").pop()} → ${riscritto.replace("https://huggingface.co/", "")}`);
-      return fetchOriginale(riscritto, opzioni);
+      const richiesta = fetchOriginale(riscritto, opzioni);
+      if (/\.onnx(\?|$)/.test(riscritto)) richiesta.then(ispezionaRisposta).catch((errore) => {
+        annota(`DIAGNOSI rete: richiesta del modello fallita — ${errore.name}: ${errore.message}`);
+      });
+      return richiesta;
     }
     return fetchOriginale(risorsa, opzioni);
   };
 }
+
+/* ---------- Diagnostica dello scaricamento ----------
+
+   Tre ipotesi producono tracce diverse, ed è per distinguerle che si
+   registrano questi dati:
+
+   - scaricamento corrotto: esito diverso da 200, tipo testuale,
+     dimensione minuscola, primi byte "<" (pagina HTML) o "{" (JSON
+     d'errore);
+   - scrittura fallita nell'archivio: risposta integra (dimensione
+     attesa, tipo binario), ma file memorizzato vuoto o più corto;
+   - formato illeggibile: risposta integra E file memorizzato integro,
+     con primo byte 08 come un modello ONNX regolare.
+
+   Per leggere i primi byte senza raddoppiare l'occupazione di memoria
+   si legge un solo frammento da una copia della risposta, poi si
+   annulla la copia: l'originale prosegue intatto verso la libreria. */
+async function ispezionaRisposta(risposta) {
+  try {
+    const nome = (risposta.url || "").split("/").pop().split("?")[0] || "(sconosciuto)";
+    const tipo = risposta.headers.get("content-type") || "non dichiarato";
+    const dimensione = parseInt(risposta.headers.get("content-length") || "0", 10);
+    const destinazione = (risposta.url || "").replace(/^https:\/\/([^/]+).*$/, "$1");
+    let primiByte = "non leggibili";
+    try {
+      const lettore = risposta.clone().body.getReader();
+      const { value } = await lettore.read();
+      lettore.cancel().catch(() => {});
+      if (value && value.length) {
+        primiByte = Array.from(value.slice(0, 8)).map((b) => b.toString(16).padStart(2, "0")).join(" ");
+      }
+    } catch (e) { /* copia non leggibile: non bloccante */ }
+    const segnaleOnnx = primiByte.startsWith("08") ? "intestazione ONNX regolare"
+      : primiByte.startsWith("3c") ? "SEMBRA UNA PAGINA HTML, non un modello"
+      : primiByte.startsWith("7b") ? "SEMBRA UN MESSAGGIO JSON, non un modello"
+      : "intestazione non riconosciuta";
+    diarioEsterno(`DIAGNOSI rete ${nome}: esito ${risposta.status}, servito da ${destinazione}, tipo ${tipo}, dimensione dichiarata ${dimensione ? (dimensione / 1048576).toFixed(1) + " MB" : "non dichiarata"}, primi byte [${primiByte}] → ${segnaleOnnx}`);
+  } catch (errore) {
+    diarioEsterno(`DIAGNOSI rete: ispezione non riuscita — ${errore.message || errore}`);
+  }
+}
+
+/* Contenuto effettivo dell'archivio del dispositivo: rivela se il
+   modello è stato scritto per intero, in parte o per niente. */
+async function descriviArchivio() {
+  try {
+    if (!navigator.storage || typeof navigator.storage.getDirectory !== "function") return "archivio non ispezionabile";
+    const radice = await navigator.storage.getDirectory();
+    const voci = [];
+    const visita = async (cartella, prefisso, profondita) => {
+      if (profondita > 4) return;
+      for await (const [nome, gestore] of cartella.entries()) {
+        if (gestore.kind === "file") {
+          if (/onnx|lessac|serena|paola|riccardo/i.test(nome)) {
+            const file = await gestore.getFile();
+            voci.push(`${prefisso}${nome} = ${(file.size / 1048576).toFixed(1)} MB`);
+          }
+        } else {
+          await visita(gestore, `${prefisso}${nome}/`, profondita + 1);
+        }
+      }
+    };
+    await visita(radice, "", 0);
+    return voci.length ? voci.join(" | ") : "nessun modello presente";
+  } catch (errore) {
+    return `lettura non riuscita (${errore.message || errore})`;
+  }
+}
+
+// Il diario del modulo è creato più sotto, dentro MotoreNeurale: queste
+// funzioni di livello superiore vi scrivono tramite questo rimando.
+let diarioEsterno = () => {};
 
 const CATALOGO_NEURALE = {
   piper: {
@@ -3027,8 +3103,16 @@ const CATALOGO_NEURALE = {
     /* "id" è ciò che l'utente sceglie; "idLibreria" è l'identificativo
        effettivamente passato alla libreria (il veicolo, per Serena). */
     voci: [
-      { id: "it_IT-serena-medium", idLibreria: "en_US-lessac-medium", nome: "Serena — italiano neutro, qualità media (consigliata)", dimensione: "circa 60 MB" },
-      { id: "it_IT-serena-high", idLibreria: "en_US-lessac-high", nome: "Serena — qualità alta, più pesante e lenta", dimensione: "circa 110 MB" },
+      /* Serena in qualità alta: PROBLEMA APERTO. Due collaudi, da due
+         fonti indipendenti, falliscono con "No graph was found in the
+         protobuf" dopo uno scaricamento apparentemente completo. La
+         versione media, stesso autore e stessa procedura, funziona. La
+         causa non è ancora stabilita: la diagnostica registrata durante
+         la preparazione (esito della richiesta, byte ricevuti, dimensione
+         memorizzata, intestazione del file) serve a distinguere fra
+         scaricamento corrotto, scrittura fallita e formato illeggibile. */
+      { id: "it_IT-serena-medium", idLibreria: "en_US-lessac-medium", nome: "Serena — italiano neutro, la più naturale (consigliata)", dimensione: "circa 60 MB" },
+      { id: "it_IT-serena-high", idLibreria: "en_US-lessac-high", nome: "Serena — qualità alta (sperimentale)", dimensione: "circa 110 MB" },
       { id: "it_IT-paola-medium", idLibreria: "it_IT-paola-medium", nome: "Paola — italiano, qualità media", dimensione: "circa 63 MB" },
       { id: "it_IT-riccardo-x_low", idLibreria: "it_IT-riccardo-x_low", nome: "Riccardo — italiano, qualità bassa ma leggera", dimensione: "circa 20 MB" },
     ],
@@ -3069,6 +3153,7 @@ const MotoreNeurale = (() => {
   }
 
   function ottieniDiario() { return diario.join("\n"); }
+  diarioEsterno = annota;
 
   /* ---------- Composizione del file WAV ---------- */
 
@@ -3242,18 +3327,24 @@ const MotoreNeurale = (() => {
 
         if (!presente && typeof modulo.download === "function") {
           annota(`Scaricamento della voce ${idVoce}…`);
+          const inizio = Date.now();
           await modulo.download(idLibreria, riferitoreProgresso(alProgresso));
+          annota(`DIAGNOSI scaricamento concluso in ${Math.round((Date.now() - inizio) / 1000)} s. Archivio: ${await descriviArchivio()}`);
         } else if (presente) {
           annota(`Voce ${idVoce} già presente e verificata.`);
         }
 
         await sintesiDiVerifica(modulo, idLibreria);
         segnaVerifica(idLibreria, true);
+        registraFallimento(idVoce, true);
         annota(`Verifica superata: ${idVoce}.`);
         return { genera: (testo) => modulo.predict({ text: testo, voiceId: idLibreria }) };
       } catch (errore) {
         ultimoErrore = errore;
         annota(`Fonte ${indice + 1} non riuscita: ${errore.message || errore}`);
+        // L'archivio va descritto PRIMA di eliminare il file guasto: è
+        // la sola prova della sua dimensione effettiva.
+        annota(`DIAGNOSI archivio al momento del fallimento: ${await descriviArchivio()}`);
         // Il file appena ottenuto è inutilizzabile: va eliminato subito,
         // altrimenti il tentativo con la fonte successiva lo troverebbe
         // "già presente" e lo riuserebbe.
@@ -3261,7 +3352,28 @@ const MotoreNeurale = (() => {
         await eliminaDaArchivio(modulo, idLibreria);
       }
     }
+    registraFallimento(idVoce, false);
     throw ultimoErrore || new Error("Nessuna fonte disponibile per questa voce.");
+  }
+
+  const GIORNI_PRIMA_DI_RIPROVARE = 10;
+
+  function registraFallimento(idVoce, riuscita) {
+    try {
+      const chiaveF = `claudio-voce-fallita-${idVoce}`;
+      if (riuscita) localStorage.removeItem(chiaveF);
+      else localStorage.setItem(chiaveF, new Date().toISOString());
+    } catch (e) { /* memoria locale non disponibile: non bloccante */ }
+  }
+
+  function infoFallimento(idVoce) {
+    try {
+      const valore = localStorage.getItem(`claudio-voce-fallita-${idVoce}`);
+      if (!valore) return null;
+      const data = new Date(valore);
+      const riprova = new Date(data.getTime() + GIORNI_PRIMA_DI_RIPROVARE * 86400000);
+      return { data, riprova, maturo: Date.now() >= riprova.getTime() };
+    } catch (e) { return null; }
   }
 
   async function rimuovi(idMotore, idVoce) {
@@ -3377,6 +3489,7 @@ const MotoreNeurale = (() => {
   return {
     prepara,
     rimuovi,
+    infoFallimento,
     ePronto,
     sintetizza,
     vociDi,
@@ -4221,7 +4334,7 @@ const ControllerTTS = (() => {
   const AMPIEZZA_FINESTRA = 60;
   const MARGINE_RICOSTRUZIONE = 15;
   const INTERVALLO_MINIMO_SALVATAGGIO_MS = 3000;
-  const VERSIONE_APP = "6.2";
+  const VERSIONE_APP = "6.4";
   const DATA_VERSIONE_APP = "17 settembre 2026";
 
   const DIMENSIONI_CARATTERE = [0.88, 0.96, 1.04, 1.14, 1.26, 1.4, 1.56];
@@ -5415,9 +5528,21 @@ const ControllerTTS = (() => {
     if (!eMotoreNeurale(idMotore)) { stato.textContent = ""; return; }
     const voce = voceNeuraleCorrente();
     if (!voce) { stato.textContent = ""; return; }
-    stato.textContent = MotoreNeurale.ePronto(idMotore, voce.id)
-      ? "Voce pronta all'uso."
-      : `Da scaricare al primo utilizzo (${voce.dimensione}). Puoi farlo subito con "Scarica la voce", oppure verrà scaricata alla prima prova.`;
+    if (MotoreNeurale.ePronto(idMotore, voce.id)) {
+      stato.textContent = "Voce pronta all'uso.";
+      return;
+    }
+    // Una voce fallita in precedenza non viene nascosta: si indica
+    // quando conviene riprovare, lasciando comunque libero il tentativo.
+    const fallimento = MotoreNeurale.infoFallimento(voce.id);
+    if (fallimento) {
+      const formato = { day: "numeric", month: "long" };
+      stato.textContent = fallimento.maturo
+        ? `L'ultimo tentativo, il ${fallimento.data.toLocaleDateString("it-IT", formato)}, non era riuscito. Sono trascorsi abbastanza giorni: vale la pena riprovare, i file potrebbero essere stati aggiornati.`
+        : `L'ultimo tentativo, il ${fallimento.data.toLocaleDateString("it-IT", formato)}, non è riuscito. I file di questa voce sono in aggiornamento presso l'autore: conviene riprovare dal ${fallimento.riprova.toLocaleDateString("it-IT", formato)}. Puoi comunque tentare ora.`;
+      return;
+    }
+    stato.textContent = `Da scaricare al primo utilizzo (${voce.dimensione}). Puoi farlo subito con "Scarica la voce", oppure verrà scaricata alla prima prova.`;
   }
 
   // Solo interfaccia: nessun effetto sul controller. Usata anche dopo
@@ -5478,6 +5603,7 @@ const ControllerTTS = (() => {
       return true;
     } catch (errore) {
       ControllerTTS.registraEsterno("ERRORE", `preparazione ${idMotore}/${voce.id}: ${errore.message || errore}`);
+      aggiornaStatoVoce();
       elementoStato.style.whiteSpace = "pre-wrap";
       elementoStato.textContent = `Preparazione non riuscita: ${errore.message || errore}\n\nDettaglio:\n${MotoreNeurale.ottieniDiario()}`;
       return false;
