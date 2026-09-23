@@ -29,7 +29,7 @@
    la versione precedente dalla cache.
    ========================================================= */
 
-const NOME_CACHE = "claudio-v6.10";
+const NOME_CACHE = "claudio-v7.0";
 
 const GUSCIO_APPLICAZIONE = [
   "./",
@@ -44,6 +44,10 @@ const ORIGINI_LIBRERIE = [
   "https://cdnjs.cloudflare.com",
   "https://cdn.jsdelivr.net",
   "https://esm.sh",
+  // Caratteri di lettura: memorizzati al primo uso, così la pagina
+  // mantiene il suo aspetto anche senza rete.
+  "https://fonts.googleapis.com",
+  "https://fonts.gstatic.com",
 ];
 
 self.addEventListener("install", (evento) => {

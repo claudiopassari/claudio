@@ -4,8 +4,11 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#1F4B4A">
-<title>CL-audio 6.10 — Audio Library Converter</title>
+<title>CL-audio 7.0 — Audio Library Converter</title>
 <link rel="manifest" href="manifest.json">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" crossorigin="anonymous" href="https://fonts.googleapis.com/css2?family=Literata:ital,opsz,wght@0,7..72,400;0,7..72,600;0,7..72,700;1,7..72,400;1,7..72,600&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&display=swap">
 <link rel="icon" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -1044,6 +1047,401 @@ select:focus-visible,
   opacity: 0.8;
 }
 
+/* =========================================================
+   7.0 — LETTORE E-BOOK
+   ========================================================= */
+
+/* ---------- Colore della pagina, indipendente dall'interfaccia ----------
+   L'interfaccia (menu, comandi) segue il tema chiaro, scuro o
+   automatico; la pagina di lettura ha un colore proprio, scelto dal
+   pannello Aa. Così si può leggere su pagina nera con i menu chiari, o
+   su carta crema con l'interfaccia scura. */
+
+:root, :root[data-pagina="crema"] {
+  --pag-sfondo: #F6F0E3; --pag-testo: #2A2620; --pag-evid: #EFDDA9; --pag-attenuato: #6B6152;
+}
+:root[data-pagina="bianco"] { --pag-sfondo: #FFFFFF; --pag-testo: #1C1B19; --pag-evid: #F3E2A8; --pag-attenuato: #5E5A52; }
+:root[data-pagina="seppia"] { --pag-sfondo: #E9DCC1; --pag-testo: #3B2D1A; --pag-evid: #D9BF7C; --pag-attenuato: #6A5638; }
+:root[data-pagina="grigio"] { --pag-sfondo: #393A3C; --pag-testo: #E6E3DC; --pag-evid: #5E5642; --pag-attenuato: #B3AFA6; }
+:root[data-pagina="nero"]   { --pag-sfondo: #000000; --pag-testo: #D9D6CF; --pag-evid: #3A3222; --pag-attenuato: #9E9A92; }
+:root[data-pagina="ambra"]  { --pag-sfondo: #000000; --pag-testo: #DDA85C; --pag-evid: #3A2A12; --pag-attenuato: #A57C40; }
+:root[data-pagina="rosso"]  { --pag-sfondo: #000000; --pag-testo: #DE614A; --pag-evid: #3A1410; --pag-attenuato: #A84836; }
+
+/* ---------- Tipografia di lettura (variabili impostate dall'app) ---------- */
+
+:root {
+  --font-lettura: 'Literata', Georgia, 'Iowan Old Style', 'Palatino Linotype', serif;
+  --interlinea-lettura: 1.62;
+  --margine-lettura: 24px;
+  --allineamento-lettura: justify;
+}
+
+.area-testo-scorrevole {
+  background: var(--pag-sfondo);
+  transition: background-color 0.2s ease;
+}
+
+.pannello-testo {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  color: var(--pag-testo);
+  font-family: var(--font-lettura);
+  line-height: var(--interlinea-lettura);
+  padding: 26px var(--margine-lettura) 40px var(--margine-lettura);
+  max-width: 68ch;
+  hyphens: auto;
+  -webkit-hyphens: auto;
+  font-kerning: normal;
+  font-variant-ligatures: common-ligatures;
+}
+
+.pannello-testo .blocco-paragrafo {
+  text-align: var(--allineamento-lettura);
+  margin: 0 0 0.9em 0;
+}
+
+.pannello-testo .frase.attiva {
+  background: var(--pag-evid);
+  color: inherit;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
+/* Titoli: tre livelli riconoscibili, spaziatura che separa le parti. */
+.pannello-testo .blocco-titolo {
+  color: var(--pag-testo);
+  text-align: left;
+  hyphens: manual;
+  line-height: 1.3;
+  font-weight: 600;
+  letter-spacing: 0.005em;
+}
+.pannello-testo .titolo-livello-1 { font-size: 1.5em; margin: 1.6em 0 0.9em 0; text-align: center; }
+.pannello-testo .titolo-livello-2 { font-size: 1.24em; margin: 1.5em 0 0.7em 0; }
+.pannello-testo .titolo-livello-3 { font-size: 1.06em; margin: 1.3em 0 0.5em 0; font-style: italic; }
+.pannello-testo .blocco-titolo:first-child { margin-top: 0.3em; }
+
+.pannello-testo strong { font-weight: 700; }
+.pannello-testo u { text-underline-offset: 0.15em; }
+
+/* ---------- Velocità compatta e pulsante Aa ---------- */
+
+.riga-velocita-compatta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.controllo-velocita {
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--bordo);
+  border-radius: 22px;
+  background: var(--bg-elevata);
+}
+
+.controllo-velocita .bottone-incremento {
+  width: 44px;
+  height: 40px;
+  border: none;
+  background: transparent;
+  font-size: 1.2rem;
+  border-radius: 22px;
+}
+
+.controllo-velocita .etichetta-velocita {
+  min-width: 46px;
+  text-align: center;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.etichetta-voce-attiva {
+  flex: 1;
+  min-width: 0;
+  text-align: center;
+  font-size: 0.78rem;
+  color: var(--testo-attenuato);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bottone-aa {
+  width: 54px;
+  height: 44px;
+  border: 1px solid var(--bordo);
+  border-radius: 12px;
+  background: var(--bg-elevata);
+  font-family: 'Literata', Georgia, serif;
+  font-size: 1.15rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.bottone-aa[aria-expanded="true"] {
+  background: var(--accento);
+  color: var(--accento-testo);
+  border-color: var(--accento);
+}
+
+/* ---------- Pannello delle impostazioni rapide ---------- */
+
+.pannello-rapido {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  max-width: 720px;
+  margin: 0 auto;
+  height: min(56dvh, 500px);
+  display: flex;
+  flex-direction: column;
+  background: var(--pannello);
+  border-radius: 18px 18px 0 0;
+  box-shadow: 0 -8px 28px rgba(20, 18, 14, 0.18);
+  z-index: 35;
+  transform: translateY(105%);
+  transition: transform 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.pannello-rapido.aperto { transform: translateY(0); }
+
+/* Con il pannello aperto il testo può scorrere fino alla parte ancora
+   visibile: senza questo spazio, le ultime righe resterebbero coperte. */
+body.pannello-aperto .area-testo-scorrevole { padding-bottom: min(56dvh, 500px); }
+
+.maniglia-pannello {
+  flex-shrink: 0;
+  height: 28px;
+  border: none;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.maniglia-pannello span {
+  width: 40px;
+  height: 5px;
+  border-radius: 3px;
+  background: var(--bordo);
+  filter: brightness(0.8);
+}
+
+.schede-pannello {
+  flex-shrink: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+  margin: 0 16px;
+  padding: 4px;
+  background: var(--bg-elevata);
+  border-radius: 12px;
+}
+
+.schede-pannello button {
+  height: 40px;
+  border: none;
+  border-radius: 9px;
+  background: transparent;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.schede-pannello button[aria-selected="true"] {
+  background: var(--pannello);
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(20, 18, 14, 0.14);
+}
+
+.corpo-pannello {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 14px 16px 18px 16px;
+}
+
+.scheda-pannello { display: flex; flex-direction: column; gap: 16px; }
+.scheda-pannello[hidden] { display: none; }
+
+.gruppo-rapido { display: flex; flex-direction: column; gap: 6px; }
+.gruppo-doppio { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.gruppo-doppio > div { display: flex; flex-direction: column; gap: 6px; }
+
+.etichetta-rapida {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--testo-attenuato);
+}
+
+.segmentato {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: 5px;
+}
+
+.segmentato button {
+  min-height: 44px;
+  border: 1px solid var(--bordo);
+  border-radius: 10px;
+  background: var(--bg-elevata);
+  font-size: 0.85rem;
+  cursor: pointer;
+  padding: 0 4px;
+}
+
+.segmentato button.attivo {
+  background: var(--accento);
+  color: var(--accento-testo);
+  border-color: var(--accento);
+}
+
+.anteprima-literata { font-family: 'Literata', Georgia, serif; }
+.anteprima-sans { font-family: 'IBM Plex Sans', system-ui, sans-serif; }
+.anteprima-leggibile { font-family: 'Atkinson Hyperlegible', system-ui, sans-serif; }
+
+.campioni-pagina { display: flex; justify-content: space-between; gap: 4px; }
+
+.campione {
+  width: 44px;
+  height: 44px;
+  border-radius: 22px;
+  border: 1px solid var(--bordo);
+  font-family: 'Literata', Georgia, serif;
+  font-weight: 600;
+  font-size: 1rem;
+  cursor: pointer;
+}
+
+.campione.attivo { outline: 3px solid var(--accento); outline-offset: 2px; }
+
+.riga-dimensione { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.riga-dimensione .icona-bottone { width: 48px; height: 44px; }
+.scala-dimensione { flex: 1; display: flex; align-items: baseline; justify-content: center; gap: 14px; font-family: 'Literata', Georgia, serif; }
+.scala-dimensione span:first-child { font-size: 0.85rem; }
+.scala-dimensione span:last-child { font-size: 1.5rem; }
+
+/* Strumenti: icona e dicitura, perché qui si arriva di rado e un'icona
+   sola non basta a ricordare la funzione. */
+.griglia-strumenti { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+
+.bottone-strumento {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 52px;
+  padding: 8px 12px;
+  border: 1px solid var(--bordo);
+  border-radius: 12px;
+  background: var(--bg-elevata);
+  text-align: left;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.bottone-strumento svg {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* ---------- Modalità immersiva ---------- */
+
+body.immersiva #vista-lettura .barra-superiore,
+body.immersiva .riga-strumenti-lettura,
+body.immersiva .dock-controlli,
+body.immersiva #nav-inferiore { display: none !important; }
+
+.bottone-esci-immersivo {
+  position: fixed;
+  right: 16px;
+  bottom: calc(16px + env(safe-area-inset-bottom));
+  width: 48px;
+  height: 48px;
+  border-radius: 24px;
+  border: 1px solid var(--bordo);
+  background: var(--pannello);
+  opacity: 0.75;
+  z-index: 36;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.bottone-esci-immersivo[hidden] { display: none; }
+
+.bottone-esci-immersivo svg {
+  width: 22px; height: 22px; fill: none; stroke: currentColor;
+  stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;
+}
+
+/* ---------- Schermi ampi: adattamento automatico ----------
+   Sotto i 900 pixel l'interfaccia resta quella del telefono. Oltre,
+   l'app occupa tutta la finestra: libreria a griglia, colonna di testo
+   di larghezza confortevole al centro, pannello rapido laterale che
+   affianca il testo invece di coprirlo. */
+
+@media (min-width: 900px) {
+  #app { max-width: none; }
+
+  .griglia-libri { grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; }
+
+  #vista-libreria { padding: 24px 40px; }
+
+  .dock-controlli > * {
+    max-width: 760px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  .riga-strumenti-lettura > * { max-width: 760px; margin-left: auto; margin-right: auto; }
+
+  .pannello-rapido {
+    top: 0;
+    left: auto;
+    right: 0;
+    bottom: 0;
+    width: 380px;
+    max-width: none;
+    height: auto;
+    margin: 0;
+    border-radius: 0;
+    border-left: 1px solid var(--bordo);
+    box-shadow: -6px 0 24px rgba(20, 18, 14, 0.12);
+    transform: translateX(105%);
+  }
+
+  .pannello-rapido.aperto { transform: translateX(0); }
+
+  .maniglia-pannello { justify-content: flex-end; padding-right: 14px; height: 44px; }
+  .maniglia-pannello span { width: 22px; height: 22px; background: none; filter: none; position: relative; }
+  .maniglia-pannello span::before,
+  .maniglia-pannello span::after {
+    content: ""; position: absolute; left: 10px; top: 1px; width: 2px; height: 20px;
+    background: var(--testo); border-radius: 1px;
+  }
+  .maniglia-pannello span::before { transform: rotate(45deg); }
+  .maniglia-pannello span::after { transform: rotate(-45deg); }
+
+  body.pannello-aperto .area-testo-scorrevole { padding-bottom: 0; }
+  body.pannello-aperto #vista-lettura { padding-right: 380px; }
+  #vista-lettura { transition: padding-right 0.22s cubic-bezier(0.2, 0.8, 0.2, 1); }
+}
+
 </style>
 </head>
 <body>
@@ -1090,6 +1488,9 @@ select:focus-visible,
       <button class="icona-bottone" id="bottone-segnalibri" title="Segnalibri" aria-label="Segnalibri">
         <svg viewBox="0 0 24 24"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
       </button>
+      <button class="icona-bottone" id="bottone-segna-posizione" title="Aggiungi segnalibro qui" aria-label="Aggiungi segnalibro qui">
+          <svg viewBox="0 0 24 24"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+        </button>
     </div>
 
     <div class="riga-strumenti-lettura" style="padding-bottom:8px;">
@@ -1142,46 +1543,157 @@ select:focus-visible,
         </button>
       </div>
 
-      <div class="riga-velocita">
-        <button class="bottone-incremento" id="velocita-meno" aria-label="Diminuisci velocità">−</button>
-        <input type="range" id="velocita-slider" min="0.5" max="4" step="0.1" value="1">
-        <span class="etichetta-velocita" id="velocita-etichetta">1.0x</span>
-        <button class="bottone-incremento" id="velocita-piu" aria-label="Aumenta velocità">+</button>
+      <div class="riga-velocita-compatta">
+        <div class="controllo-velocita">
+          <button class="bottone-incremento" id="velocita-meno" aria-label="Diminuisci la velocità">−</button>
+          <span class="etichetta-velocita" id="velocita-etichetta">1,0×</span>
+          <button class="bottone-incremento" id="velocita-piu" aria-label="Aumenta la velocità">+</button>
+        </div>
+        <span class="etichetta-voce-attiva" id="etichetta-voce-attiva"></span>
+        <button class="bottone-aa" id="bottone-aa" aria-label="Impostazioni rapide" aria-expanded="false" aria-controls="pannello-rapido">Aa</button>
       </div>
 
-      <div class="bottoniera-secondaria">
-        <button class="icona-bottone" id="bottone-segna-posizione" title="Aggiungi segnalibro qui" aria-label="Aggiungi segnalibro qui">
-          <svg viewBox="0 0 24 24"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
-        </button>
-        <button class="icona-bottone" id="bottone-copia-testo" title="Copia il passaggio corrente" aria-label="Copia il passaggio corrente">
-          <svg viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-        </button>
-        <button class="icona-bottone" id="bottone-carattere-meno" title="Riduci il testo" aria-label="Riduci la dimensione del testo">
+
+    </div>
+    <!-- Impostazioni rapide: sale dal basso sul telefono, scorre da destra
+         sul computer. Non oscura il testo, così ogni modifica è visibile
+         mentre la si fa. -->
+    <aside class="pannello-rapido" id="pannello-rapido" aria-label="Impostazioni rapide" inert>
+      <button class="maniglia-pannello" id="maniglia-pannello" aria-label="Chiudi le impostazioni rapide"><span></span></button>
+      <div class="schede-pannello" role="tablist">
+        <button role="tab" data-scheda="pagina" aria-selected="true">Pagina</button>
+        <button role="tab" data-scheda="voce" aria-selected="false">Voce</button>
+        <button role="tab" data-scheda="strumenti" aria-selected="false">Strumenti</button>
+      </div>
+      <div class="corpo-pannello">
+        <section class="scheda-pannello" data-scheda="pagina">
+          <div class="gruppo-rapido">
+            <span class="etichetta-rapida">Dimensione del testo · <span id="etichetta-dimensione">100%</span></span>
+            <div class="riga-dimensione">
+              <button class="icona-bottone" id="bottone-carattere-meno" title="Riduci il testo" aria-label="Riduci la dimensione del testo">
           <svg viewBox="0 0 24 24"><path d="M4 19l6-14 6 14M6.5 14h7"/></svg>
         </button>
-        <button class="icona-bottone" id="bottone-carattere-piu" title="Ingrandisci il testo" aria-label="Ingrandisci la dimensione del testo">
+              <span class="scala-dimensione" aria-hidden="true"><span>A</span><span>A</span></span>
+              <button class="icona-bottone" id="bottone-carattere-piu" title="Ingrandisci il testo" aria-label="Ingrandisci la dimensione del testo">
           <svg viewBox="0 0 24 24"><path d="M2 20l7-16 7 16M4.5 14h9M18 9v8M14 13h8"/></svg>
         </button>
-        <button class="icona-bottone" id="bottone-selezione" title="Seleziona paragrafi" aria-label="Seleziona più paragrafi da leggere in sequenza">
-          <svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
-        </button>
-        <button class="icona-bottone" id="bottone-metadati" title="Modifica metadati" aria-label="Modifica i metadati del libro">
-          <svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z"/></svg>
-        </button>
-        <button class="icona-bottone" id="bottone-schermo-intero" title="Schermo intero" aria-label="Attiva o disattiva lo schermo intero">
-          <svg viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
-        </button>
-        <button class="icona-bottone" id="bottone-impostazioni-lettura" title="Impostazioni" aria-label="Apri le impostazioni">
-          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6h.09A1.65 1.65 0 0 0 10 3.09V3a2 2 0 0 1 4 0v.09A1.65 1.65 0 0 0 15 4.6a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9v.09a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-        </button>
-        <button class="icona-bottone" id="bottone-opzioni-voce" title="Opzioni di lettura" aria-label="Opzioni di lettura">
-          <svg viewBox="0 0 24 24"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></svg>
-        </button>
-        <button class="icona-bottone" id="bottone-tema" title="Cambia tema" aria-label="Cambia tema giorno/notte">
-          <svg viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
-        </button>
+            </div>
+          </div>
+          <div class="gruppo-rapido">
+            <span class="etichetta-rapida">Carattere</span>
+            <div class="segmentato" data-impostazione="font">
+              <button data-valore="literata" class="anteprima-literata">Con grazie</button>
+              <button data-valore="sans" class="anteprima-sans">Senza grazie</button>
+              <button data-valore="leggibile" class="anteprima-leggibile">Leggibile</button>
+              <button data-valore="sistema">Di sistema</button>
+            </div>
+          </div>
+          <div class="gruppo-rapido">
+            <span class="etichetta-rapida">Colore della pagina · <span id="etichetta-colore-pagina">crema</span></span>
+            <div class="campioni-pagina" data-impostazione="colore">
+          <button class="campione" data-valore="bianco" aria-label="Pagina bianca" style="background:#FFFFFF;color:#1C1B19">A</button>
+          <button class="campione" data-valore="crema" aria-label="Pagina crema" style="background:#F6F0E3;color:#2A2620">A</button>
+          <button class="campione" data-valore="seppia" aria-label="Pagina seppia" style="background:#E9DCC1;color:#3B2D1A">A</button>
+          <button class="campione" data-valore="grigio" aria-label="Pagina grigia" style="background:#393A3C;color:#E6E3DC">A</button>
+          <button class="campione" data-valore="nero" aria-label="Pagina nera" style="background:#000000;color:#D9D6CF">A</button>
+          <button class="campione" data-valore="ambra" aria-label="Pagina nera, testo ambra" style="background:#000000;color:#DDA85C">A</button>
+          <button class="campione" data-valore="rosso" aria-label="Pagina nera, testo rosso" style="background:#000000;color:#DE614A">A</button>
+            </div>
+          </div>
+          <div class="gruppo-rapido gruppo-doppio">
+            <div>
+              <span class="etichetta-rapida">Interlinea</span>
+              <div class="segmentato" data-impostazione="interlinea">
+                <button data-valore="1.4">1,4</button>
+                <button data-valore="1.62">1,6</button>
+                <button data-valore="1.85">1,8</button>
+              </div>
+            </div>
+            <div>
+              <span class="etichetta-rapida">Margini</span>
+              <div class="segmentato" data-impostazione="margini">
+                <button data-valore="stretti" aria-label="Margini stretti">S</button>
+                <button data-valore="medi" aria-label="Margini medi">M</button>
+                <button data-valore="ampi" aria-label="Margini ampi">L</button>
+              </div>
+            </div>
+          </div>
+          <div class="gruppo-rapido">
+            <span class="etichetta-rapida">Allineamento</span>
+            <div class="segmentato" data-impostazione="allineamento">
+              <button data-valore="giustificato">Giustificato</button>
+              <button data-valore="sinistra">A sinistra</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="scheda-pannello" data-scheda="voce" hidden>
+          <div class="gruppo-rapido">
+            <label for="velocita-slider" class="etichetta-rapida">Velocità · <span id="velocita-etichetta-pannello">1,0×</span></label>
+            <input type="range" id="velocita-slider" min="0.5" max="4" step="0.1" value="1">
+          </div>
+    <div class="riga-impostazione">
+      <label for="slider-tono-voce">Tono della voce: <span id="tono-voce-etichetta">1.0</span></label>
+      <input type="range" id="slider-tono-voce" min="0.5" max="2" step="0.1" value="1">
+    </div>
+    <div class="riga-impostazione" id="sezione-equalizzatore">
+      <label>Equalizzatore</label>
+      <p class="nota-impostazione" id="avviso-equalizzatore" hidden>L'equalizzatore richiede un motore neurale. La sintesi di sistema invia il parlato direttamente all'uscita del dispositivo, senza esporre alcun punto in cui inserire un filtro: non è una limitazione dell'applicazione ma della piattaforma.</p>
+
+      <div class="preset-equalizzatore" id="preset-equalizzatore">
+        <button data-preset="neutro">Neutro</button>
+        <button data-preset="caldo">Voce calda</button>
+        <button data-preset="chiarezza">Chiarezza</button>
+        <button data-preset="notte">Notte</button>
+      </div>
+
+      <div class="bande-equalizzatore" id="bande-equalizzatore">
+        <label for="eq-bassi">Bassi: <span id="eq-bassi-etichetta">0 dB</span></label>
+        <input type="range" id="eq-bassi" min="-12" max="12" step="1" value="0">
+        <label for="eq-medi">Medi: <span id="eq-medi-etichetta">0 dB</span></label>
+        <input type="range" id="eq-medi" min="-12" max="12" step="1" value="0">
+        <label for="eq-alti">Alti: <span id="eq-alti-etichetta">0 dB</span></label>
+        <input type="range" id="eq-alti" min="-12" max="12" step="1" value="0">
+        <label><input type="checkbox" id="eq-compressione"> Livella i picchi di volume</label>
+        <p class="nota-impostazione">La livellazione riduce gli sbalzi di intensità fra i passaggi: utile per un ascolto prolungato a basso volume o in ambiente rumoroso.</p>
       </div>
     </div>
+        </section>
+
+        <section class="scheda-pannello" data-scheda="strumenti" hidden>
+          <div class="griglia-strumenti">
+            <button class="bottone-strumento" id="bottone-copia-testo" title="Copia il passaggio corrente" aria-label="Copia il passaggio corrente">
+          <svg viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+        <span>Copia il passaggio</span></button>
+            <button class="bottone-strumento" id="bottone-selezione" title="Seleziona paragrafi" aria-label="Seleziona più paragrafi da leggere in sequenza">
+          <svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+        <span>Seleziona paragrafi</span></button>
+            <button class="bottone-strumento" id="bottone-metadati" title="Modifica metadati" aria-label="Modifica i metadati del libro">
+          <svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z"/></svg>
+        <span>Titolo e autore</span></button>
+            <button class="bottone-strumento" id="bottone-schermo-intero" title="Schermo intero" aria-label="Attiva o disattiva lo schermo intero">
+          <svg viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
+        <span>Schermo intero</span></button>
+            <button class="bottone-strumento" id="bottone-immersivo" title="Nascondi i comandi" aria-label="Nascondi i comandi">
+              <svg viewBox="0 0 24 24"><path d="M3 3l18 18"/><path d="M10.6 5.1A10.5 10.5 0 0 1 12 5c5 0 9 4.5 10 7a14 14 0 0 1-3 4.2M6.6 6.6C4.3 8 2.7 10.2 2 12c1 2.5 5 7 10 7 1.6 0 3.1-.4 4.4-1.1"/></svg><span>Nascondi i comandi</span></button>
+            <button class="bottone-strumento" id="bottone-tema" title="Cambia tema" aria-label="Cambia tema giorno/notte">
+          <svg viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+        <span>Tema dell'interfaccia</span></button>
+            <button class="bottone-strumento" id="bottone-opzioni-voce" title="Opzioni di lettura" aria-label="Opzioni di lettura">
+          <svg viewBox="0 0 24 24"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></svg>
+        <span>Opzioni avanzate di lettura</span></button>
+            <button class="bottone-strumento" id="bottone-impostazioni-lettura" title="Impostazioni" aria-label="Apri le impostazioni">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6h.09A1.65 1.65 0 0 0 10 3.09V3a2 2 0 0 1 4 0v.09A1.65 1.65 0 0 0 15 4.6a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9v.09a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        <span>Tutte le impostazioni</span></button>
+          </div>
+        </section>
+      </div>
+    </aside>
+
+    <button class="bottone-esci-immersivo" id="bottone-esci-immersivo" aria-label="Mostra i comandi" hidden>
+      <svg viewBox="0 0 24 24"><path d="M2 12c1-2.5 5-7 10-7s9 4.5 10 7c-1 2.5-5 7-10 7S3 14.5 2 12z"/><circle cx="12" cy="12" r="3"/></svg>
+    </button>
+
   </section>
 
   <!-- ===================== NAVIGAZIONE INFERIORE ===================== -->
@@ -1249,12 +1761,9 @@ select:focus-visible,
   <div class="sfondo-cassetto" id="sfondo-cassetto-voce" hidden></div>
   <div class="cassetto" id="cassetto-voce" hidden style="display:none;">
     <div class="maniglia-cassetto"></div>
-    <h3>Opzioni di lettura</h3>
+    <h3>Opzioni avanzate di lettura</h3>
 
-    <div class="riga-impostazione">
-      <label for="slider-tono-voce">Tono della voce: <span id="tono-voce-etichetta">1.0</span></label>
-      <input type="range" id="slider-tono-voce" min="0.5" max="2" step="0.1" value="1">
-    </div>
+
 
     <div class="riga-impostazione">
       <label>
@@ -1276,29 +1785,6 @@ select:focus-visible,
       </select>
     </div>
 
-    <div class="riga-impostazione" id="sezione-equalizzatore">
-      <label>Equalizzatore</label>
-      <p class="nota-impostazione" id="avviso-equalizzatore" hidden>L'equalizzatore richiede un motore neurale. La sintesi di sistema invia il parlato direttamente all'uscita del dispositivo, senza esporre alcun punto in cui inserire un filtro: non è una limitazione dell'applicazione ma della piattaforma.</p>
-
-      <div class="preset-equalizzatore" id="preset-equalizzatore">
-        <button data-preset="neutro">Neutro</button>
-        <button data-preset="caldo">Voce calda</button>
-        <button data-preset="chiarezza">Chiarezza</button>
-        <button data-preset="notte">Notte</button>
-      </div>
-
-      <div class="bande-equalizzatore" id="bande-equalizzatore">
-        <label for="eq-bassi">Bassi: <span id="eq-bassi-etichetta">0 dB</span></label>
-        <input type="range" id="eq-bassi" min="-12" max="12" step="1" value="0">
-        <label for="eq-medi">Medi: <span id="eq-medi-etichetta">0 dB</span></label>
-        <input type="range" id="eq-medi" min="-12" max="12" step="1" value="0">
-        <label for="eq-alti">Alti: <span id="eq-alti-etichetta">0 dB</span></label>
-        <input type="range" id="eq-alti" min="-12" max="12" step="1" value="0">
-        <label><input type="checkbox" id="eq-compressione"> Livella i picchi di volume</label>
-        <p class="nota-impostazione">La livellazione riduce gli sbalzi di intensità fra i passaggi: utile per un ascolto prolungato a basso volume o in ambiente rumoroso.</p>
-      </div>
-    </div>
-
     <div class="riga-impostazione">
       <label>
         <input type="checkbox" id="chk-pre-accodamento" checked>
@@ -1317,16 +1803,13 @@ select:focus-visible,
     <div class="statistiche-libro" id="statistiche-libro"></div>
 
     <div class="riga-impostazione">
-      <label>Tema di lettura</label>
+      <label>Tema dell'interfaccia</label>
       <div class="griglia-temi" id="selettore-temi">
         <button data-tema="chiaro">Chiaro</button>
         <button data-tema="scuro">Scuro</button>
-        <button data-tema="seppia">Seppia</button>
-        <button data-tema="grigio">Grigio</button>
-        <button data-tema="amoled-ambra">AMOLED ambra</button>
-        <button data-tema="amoled-rosso">AMOLED rosso</button>
+        <button data-tema="automatico">Automatico</button>
       </div>
-      <p class="nota-impostazione">I due temi AMOLED usano il nero assoluto, che sui pannelli OLED spegne fisicamente i pixel. La variante rossa è pensata per la lettura al buio: la luce rossa interferisce meno con l'adattamento dell'occhio all'oscurità.</p>
+      <p class="nota-impostazione">Il tema riguarda menu e comandi; "Automatico" segue l'impostazione del telefono o del computer. Il colore della pagina di lettura si sceglie a parte, dal pulsante Aa: comprende bianco, crema, seppia, grigio e tre varianti su nero assoluto, fra cui il testo rosso per la lettura al buio.</p>
     </div>
 
     <div class="riga-impostazione">
@@ -2032,6 +2515,229 @@ function escapeHtml(testo) {
   return div.innerHTML;
 }
 
+/* ---------------------------------------------------------
+   8. FORMATTAZIONE DEL TESTO (grassetto, corsivo, sottolineato,
+      barrato)
+
+   Architettura: la sintesi vocale legge sempre il testo semplice, che
+   resta la sorgente unica di frasi e unità. La formattazione viaggia a
+   parte, come elenco di intervalli [inizio, fine, maschera] riferiti ai
+   caratteri di ciascuna frase. In questo modo la suddivisione in unità,
+   l'evidenziazione sincronizzata e i segnalibri, che lavorano tutti sul
+   testo semplice, restano esattamente come prima, e la formattazione si
+   applica solo al momento della resa a schermo.
+
+   Maschera: 1 grassetto, 2 corsivo, 4 sottolineato, 8 barrato,
+   combinabili fra loro.
+   --------------------------------------------------------- */
+
+const STILE_GRASSETTO = 1;
+const STILE_CORSIVO = 2;
+const STILE_SOTTOLINEATO = 4;
+const STILE_BARRATO = 8;
+
+/* Formattazione dichiarata da un elemento. Oltre ai tag espliciti si
+   leggono lo stile in linea e i nomi di classe più diffusi: molti EPUB
+   rendono il corsivo con <span class="italic"> e un foglio di stile. Le
+   classi con nomi arbitrari non sono interpretabili senza applicare il
+   foglio di stile, e in quel caso la formattazione va persa. */
+function mascheraElemento(elemento) {
+  const tag = (elemento.localName || elemento.tagName || "").toLowerCase();
+  let maschera = 0;
+  if (tag === "b" || tag === "strong") maschera |= STILE_GRASSETTO;
+  if (tag === "i" || tag === "em" || tag === "cite" || tag === "dfn") maschera |= STILE_CORSIVO;
+  if (tag === "u" || tag === "ins") maschera |= STILE_SOTTOLINEATO;
+  if (tag === "s" || tag === "strike" || tag === "del") maschera |= STILE_BARRATO;
+  const leggi = (nome) => (elemento.getAttribute && elemento.getAttribute(nome)) || "";
+  const stile = leggi("style");
+  if (/font-weight\s*:\s*(bold|bolder|[6-9]00)/i.test(stile)) maschera |= STILE_GRASSETTO;
+  if (/font-style\s*:\s*(italic|oblique)/i.test(stile)) maschera |= STILE_CORSIVO;
+  if (/text-decoration[^;]*underline/i.test(stile)) maschera |= STILE_SOTTOLINEATO;
+  if (/text-decoration[^;]*line-through/i.test(stile)) maschera |= STILE_BARRATO;
+  const classe = leggi("class").toLowerCase();
+  if (/(^|[\s_-])(bold|bolder|strong|grassetto|b)($|[\s_-])/.test(classe)) maschera |= STILE_GRASSETTO;
+  if (/(^|[\s_-])(italic|italics|ital|it|corsivo|em|emph)($|[\s_-])/.test(classe)) maschera |= STILE_CORSIVO;
+  if (/(^|[\s_-])(underline|sottolineato|u)($|[\s_-])/.test(classe)) maschera |= STILE_SOTTOLINEATO;
+  if (/(^|[\s_-])(strike|strikethrough|line-through|barrato)($|[\s_-])/.test(classe)) maschera |= STILE_BARRATO;
+  return maschera;
+}
+
+function unisciIntervalli(intervalli, lunghezza) {
+  const validi = intervalli
+    .map(([a, b, m]) => [Math.max(0, a), Math.min(lunghezza, b), m])
+    .filter(([a, b, m]) => b > a && m);
+  const uniti = [];
+  for (const intervallo of validi) {
+    const ultimo = uniti[uniti.length - 1];
+    if (ultimo && ultimo[2] === intervallo[2] && ultimo[1] >= intervallo[0]) ultimo[1] = Math.max(ultimo[1], intervallo[1]);
+    else uniti.push(intervallo.slice());
+  }
+  return uniti;
+}
+
+/* Testo di un blocco, con spazi uniformati, e i suoi intervalli di
+   formattazione. La normalizzazione tipografica si applica nodo per
+   nodo, prima di calcolare le posizioni, così gli intervalli si
+   riferiscono al testo definitivo. Funziona sia su un documento sia su
+   un elemento, e su qualunque albero che esponga nodeType e childNodes. */
+function estraiTestoFormattato(radice) {
+  let testo = "";
+  const intervalli = [];
+  const visita = (nodo, maschera) => {
+    if (!nodo) return;
+    if (nodo.nodeType === 3) {
+      let pezzo = normalizzaTipografia(nodo.nodeValue || "").replace(/\s+/g, " ");
+      if (pezzo.startsWith(" ") && (testo === "" || testo.endsWith(" "))) pezzo = pezzo.slice(1);
+      if (!pezzo) return;
+      const inizio = testo.length;
+      testo += pezzo;
+      if (maschera) intervalli.push([inizio, testo.length, maschera]);
+      return;
+    }
+    if (nodo.nodeType !== 1 && nodo.nodeType !== 9) return;
+    const tag = (nodo.localName || nodo.tagName || "").toLowerCase();
+    if (tag === "script" || tag === "style") return;
+    if (tag === "br") {
+      if (testo && !testo.endsWith(" ")) testo += " ";
+      return;
+    }
+    const nuovaMaschera = nodo.nodeType === 1 ? maschera | mascheraElemento(nodo) : maschera;
+    for (const figlio of Array.from(nodo.childNodes || [])) visita(figlio, nuovaMaschera);
+  };
+  visita(radice, 0);
+  const finale = testo.replace(/\s+$/, "");
+  return { testo: finale, intervalli: unisciIntervalli(intervalli, finale.length) };
+}
+
+/* Divide in frasi un testo formattato e riporta a ciascuna frase gli
+   intervalli che la riguardano, con posizioni relative alla frase. Le
+   frasi prodotte da dividiInFrasi sono porzioni esatte del testo (gli
+   spazi sono già uniformati), quindi la loro posizione si ritrova con
+   una ricerca progressiva. */
+function dividiInFrasiConStili(testo, intervalli) {
+  const frasi = dividiInFrasi(testo);
+  let cursore = 0;
+  return frasi.map((frase) => {
+    const posizione = testo.indexOf(frase, cursore);
+    if (posizione < 0) return { frase, stili: null };
+    cursore = posizione + frase.length;
+    const stili = [];
+    for (const [a, b, m] of intervalli || []) {
+      const inizio = Math.max(a, posizione) - posizione;
+      const fine = Math.min(b, posizione + frase.length) - posizione;
+      if (fine > inizio) stili.push([inizio, fine, m]);
+    }
+    return { frase, stili: stili.length ? stili : null };
+  });
+}
+
+/* Un blocco breve interamente in grassetto e senza punteggiatura finale
+   è quasi sempre un titolo di paragrafo, anche quando il file non lo
+   marca come intestazione: accade spesso negli EPUB prodotti da
+   programmi di videoscrittura. */
+function sembraTitoloImplicito(testo, intervalli) {
+  const pulito = testo.trim();
+  if (!pulito || pulito.length > 90 || /[.,;:!?]$/.test(pulito)) return false;
+  let coperti = 0;
+  for (const [a, b, m] of intervalli || []) if (m & STILE_GRASSETTO) coperti += b - a;
+  return coperti >= pulito.length * 0.9;
+}
+
+/* Markdown in linea: **grassetto**, __grassetto__, *corsivo*, _corsivo_,
+   ~~barrato~~. Usato solo per i file .md, dove quei segni sono
+   formattazione e non testo. */
+function analizzaInlineMarkdown(sorgente) {
+  const espressione = /\*\*(.+?)\*\*|__(.+?)__|~~(.+?)~~|\*(?!\s)(.+?)(?<!\s)\*|(?<![\p{L}\p{N}])_(?!\s)(.+?)(?<!\s)_(?![\p{L}\p{N}])/gu;
+  let testo = "";
+  const intervalli = [];
+  let ultimo = 0;
+  let corrispondenza;
+  while ((corrispondenza = espressione.exec(sorgente))) {
+    testo += sorgente.slice(ultimo, corrispondenza.index);
+    const [contenuto, maschera] =
+      corrispondenza[1] != null ? [corrispondenza[1], STILE_GRASSETTO]
+      : corrispondenza[2] != null ? [corrispondenza[2], STILE_GRASSETTO]
+      : corrispondenza[3] != null ? [corrispondenza[3], STILE_BARRATO]
+      : corrispondenza[4] != null ? [corrispondenza[4], STILE_CORSIVO]
+      : [corrispondenza[5], STILE_CORSIVO];
+    const inizio = testo.length;
+    testo += contenuto;
+    intervalli.push([inizio, testo.length, maschera]);
+    ultimo = espressione.lastIndex;
+  }
+  testo += sorgente.slice(ultimo);
+  return { testo, intervalli };
+}
+
+/* Resa a schermo di una porzione di frase con la sua formattazione.
+   "inizio" è la posizione della porzione all'interno della frase; gli
+   intervalli sono quelli della frase intera. Il testo viene sempre
+   neutralizzato con escapeHtml: la formattazione è aggiunta solo come
+   tag fissi, mai come markup proveniente dal file. */
+function rendiConStili(porzione, stili, inizio) {
+  if (!stili || !stili.length) return escapeHtml(porzione);
+  const fine = inizio + porzione.length;
+  const confini = new Set([inizio, fine]);
+  for (const [a, b] of stili) {
+    if (b > inizio && a < fine) {
+      confini.add(Math.max(a, inizio));
+      confini.add(Math.min(b, fine));
+    }
+  }
+  const ordinati = [...confini].sort((x, y) => x - y);
+  let html = "";
+  for (let k = 0; k < ordinati.length - 1; k++) {
+    const a = ordinati[k];
+    const b = ordinati[k + 1];
+    let maschera = 0;
+    for (const [s, e, m] of stili) if (s <= a && e >= b) maschera |= m;
+    let pezzo = escapeHtml(porzione.slice(a - inizio, b - inizio));
+    if (maschera & STILE_BARRATO) pezzo = `<s>${pezzo}</s>`;
+    if (maschera & STILE_SOTTOLINEATO) pezzo = `<u>${pezzo}</u>`;
+    if (maschera & STILE_CORSIVO) pezzo = `<em>${pezzo}</em>`;
+    if (maschera & STILE_GRASSETTO) pezzo = `<strong>${pezzo}</strong>`;
+    html += pezzo;
+  }
+  return html;
+}
+
+/* Accoda un blocco HTML (paragrafo, intestazione, voce di elenco) alle
+   strutture del libro, con formattazione e riconoscimento dei titoli.
+   Condivisa da EPUB e MOBI, che producono entrambi HTML: così i due
+   formati non possono divergere nel trattamento del testo.
+
+   Livelli dei titoli: quello dichiarato dal tag (h1…h6) oppure 4 per i
+   titoli impliciti, cioè i blocchi brevi interamente in grassetto.
+   Restituisce la descrizione del blocco, perché il parser MOBI usa le
+   intestazioni esplicite anche per costruire l'indice. */
+function accodaBloccoFormattato(elemento, uscita) {
+  const { testo, intervalli } = estraiTestoFormattato(elemento);
+  if (!testo.trim()) return null;
+  const tag = (elemento.localName || elemento.tagName || "").toLowerCase();
+  const esplicito = /^h[1-6]$/.test(tag);
+  uscita.contatore += 1;
+
+  if (esplicito || sembraTitoloImplicito(testo, intervalli)) {
+    const titolo = testo.trim();
+    uscita.frasi.push(titolo);
+    uscita.metaFrasi.push({
+      tipo: "titolo",
+      livello: esplicito ? parseInt(tag.charAt(1), 10) : 4,
+      paragrafo: uscita.contatore,
+      pagina: null,
+    });
+    uscita.stiliFrasi.push(null);
+    return { titolo, esplicito, indiceFrase: uscita.frasi.length - 1 };
+  }
+
+  for (const { frase, stili } of dividiInFrasiConStili(testo, intervalli)) {
+    uscita.frasi.push(frase);
+    uscita.metaFrasi.push({ tipo: "paragrafo", paragrafo: uscita.contatore, pagina: null });
+    uscita.stiliFrasi.push(stili);
+  }
+  return null;
+}
+
 
 /* ===== js/parser-txt.js ===== */
 /* =========================================================
@@ -2056,11 +2762,17 @@ function escapeHtml(testo) {
    perdita di contenuto, solo assenza di suddivisione navigabile.
    ========================================================= */
 
-async function analizzaTXT(testoCompleto) {
+async function analizzaTXT(testoCompleto, opzioni) {
+  // Nei file Markdown (.md) asterischi, trattini bassi e tilde sono
+  // formattazione; in un testo qualsiasi possono essere contenuto, e
+  // interpretarli sarebbe un errore. Per questo la formattazione in
+  // linea si attiva solo su richiesta esplicita del chiamante.
+  const markdown = !!(opzioni && opzioni.markdown);
   const righe = normalizzaTipografia(testoCompleto).split(/\r?\n/);
   const capitoli = [];
   const frasi = [];
   const metaFrasi = [];
+  const stiliFrasi = [];
   let bufferParagrafo = [];
   let contatoreParagrafi = 0;
 
@@ -2069,30 +2781,46 @@ async function analizzaTXT(testoCompleto) {
   function chiudiParagrafo() {
     if (!bufferParagrafo.length) return;
     contatoreParagrafi += 1;
-    const paragrafo = bufferParagrafo.join(" ");
-    dividiInFrasi(paragrafo).forEach((frase) => {
+    const sorgente = bufferParagrafo.join(" ").replace(/\s+/g, " ").trim();
+    const { testo, intervalli } = markdown
+      ? analizzaInlineMarkdown(sorgente)
+      : { testo: sorgente, intervalli: [] };
+    dividiInFrasiConStili(testo, intervalli).forEach(({ frase, stili }) => {
       frasi.push(frase);
       metaFrasi.push({ tipo: "paragrafo", paragrafo: contatoreParagrafi, pagina: null });
+      stiliFrasi.push(stili);
     });
     bufferParagrafo = [];
+  }
+
+  function accodaTitolo(testoTitolo, livello) {
+    chiudiParagrafo();
+    contatoreParagrafi += 1;
+    // I titoli di primo e secondo livello entrano nell'indice; quelli
+    // inferiori restano titoletti nel testo, per non affollarlo.
+    if (livello <= 2) capitoli.push({ titolo: testoTitolo, indiceFrase: frasi.length });
+    frasi.push(testoTitolo);
+    metaFrasi.push({ tipo: "titolo", livello, paragrafo: contatoreParagrafi, pagina: null });
+    stiliFrasi.push(null);
   }
 
   righe.forEach((rigaGrezza) => {
     const riga = rigaGrezza.trim();
     if (!riga) { chiudiParagrafo(); return; }
 
+    // Titoli Markdown: "# Titolo", "## Sottotitolo" … riconosciuti in
+    // ogni testo, perché la forma è inequivocabile.
+    const titoloMd = riga.match(/^(#{1,6})\s+(.+?)\s*#*$/);
+    if (titoloMd) {
+      const testoTitolo = markdown ? analizzaInlineMarkdown(titoloMd[2]).testo : titoloMd[2];
+      accodaTitolo(testoTitolo.trim(), titoloMd[1].length);
+      return;
+    }
+
     const eTuttoMaiuscolo =
       riga.length < 60 && riga === riga.toUpperCase() && /\p{Lu}/u.test(riga);
-    const sembraTitolo = regexTitoloCapitolo.test(riga) || eTuttoMaiuscolo;
-
-    if (sembraTitolo) {
-      chiudiParagrafo();
-      contatoreParagrafi += 1;
-      // Il titolo entra nel testo come unità a sé: va letto ad alta
-      // voce e mostrato come intestazione, non soltanto indicizzato.
-      capitoli.push({ titolo: riga, indiceFrase: frasi.length });
-      frasi.push(riga);
-      metaFrasi.push({ tipo: "titolo", paragrafo: contatoreParagrafi, pagina: null });
+    if (regexTitoloCapitolo.test(riga) || eTuttoMaiuscolo) {
+      accodaTitolo(riga, 2);
       return;
     }
     bufferParagrafo.push(riga);
@@ -2104,6 +2832,7 @@ async function analizzaTXT(testoCompleto) {
   return {
     frasi,
     metaFrasi,
+    stiliFrasi,
     capitoli,
     titolo: null,
     autore: null,
@@ -2402,8 +3131,15 @@ async function analizzaPDF(arrayBuffer, opzioniImport) {
       const frasiBlocco = blocco.tipo === "titolo" ? [blocco.testo] : dividiInFrasi(blocco.testo);
       frasiBlocco.forEach((frase) => {
         frasi.push(frase);
+        // Livello del titolo dal rapporto fra il suo carattere e quello
+        // del testo: nei PDF non esiste una gerarchia dichiarata, e la
+        // dimensione è l'indizio più attendibile disponibile.
+        const rapporto = blocco.tipo === "titolo" && dimensioneCorpo > 0
+          ? (blocco.dimensione || dimensioneCorpo) / dimensioneCorpo
+          : 0;
         metaFrasi.push({
           tipo: blocco.tipo,
+          livello: blocco.tipo === "titolo" ? (rapporto >= 1.6 ? 1 : rapporto >= 1.3 ? 2 : 3) : undefined,
           paragrafo: contatoreParagrafi,
           pagina: indicePagina + 1,
         });
@@ -2511,6 +3247,11 @@ async function analizzaPDF(arrayBuffer, opzioniImport) {
   return {
     frasi,
     metaFrasi,
+    // Nessuna formattazione in linea per i PDF: pdf.js restituisce il
+    // testo senza distinguere grassetto e corsivo, e ricavarli dai nomi
+    // dei caratteri richiederebbe di analizzare ogni pagina come per la
+    // stampa, con un costo sproporzionato e un esito incerto.
+    stiliFrasi: null,
     copertina,
     capitoli: capitoliUnici,
     numeroPagine,
@@ -2702,6 +3443,9 @@ async function analizzaEPUB(arrayBuffer) {
 
   const frasi = [];
   const metaFrasi = [];
+  // Formattazione di ciascuna frase, allineata a frasi e metaFrasi.
+  const stiliFrasi = [];
+  const uscita = { frasi, metaFrasi, stiliFrasi, contatore: 0 };
   let contatoreParagrafi = 0;
   const mappaHrefIndiceFrase = {};
 
@@ -2750,33 +3494,11 @@ async function analizzaEPUB(arrayBuffer) {
       const blocchi = tuttiBlocchi.filter((blocco) => !blocco.querySelector(selettoreBlocchi));
 
       if (blocchi.length) {
-        blocchi.forEach((blocco) => {
-          const testoBlocco = normalizzaTipografia(blocco.textContent || "");
-          if (!testoBlocco.trim()) return;
-          // Nell'EPUB il tipo di blocco è dichiarato dal formato stesso:
-          // non serve dedurlo da indizi tipografici come nel PDF.
-          const eIntestazione = /^H[1-6]$/i.test(blocco.tagName || "");
-          contatoreParagrafi += 1;
-          const frasiBlocco = eIntestazione ? [testoBlocco.trim()] : dividiInFrasi(testoBlocco);
-          frasiBlocco.forEach((frase) => {
-            frasi.push(frase);
-            metaFrasi.push({
-              tipo: eIntestazione ? "titolo" : "paragrafo",
-              paragrafo: contatoreParagrafi,
-              pagina: null,
-            });
-          });
-        });
-      } else {
-        // Sezione priva di marcatura a blocchi: si ricade sul testo grezzo
-        const testoSezione = normalizzaTipografia((corpo ? corpo.textContent : "") || "");
-        if (testoSezione.trim()) {
-          contatoreParagrafi += 1;
-          dividiInFrasi(testoSezione).forEach((frase) => {
-            frasi.push(frase);
-            metaFrasi.push({ tipo: "paragrafo", paragrafo: contatoreParagrafi, pagina: null });
-          });
-        }
+        blocchi.forEach((blocco) => accodaBloccoFormattato(blocco, uscita));
+      } else if (corpo) {
+        // Sezione priva di marcatura a blocchi: l'intero corpo come
+        // un unico blocco, formattazione compresa.
+        accodaBloccoFormattato(corpo, uscita);
       }
       if (typeof sezione.unload === "function") sezione.unload();
     } catch (erroreSezione) {
@@ -2848,7 +3570,7 @@ async function analizzaEPUB(arrayBuffer) {
 
 
 
-  return { frasi, metaFrasi, capitoli: capitoliUnici, titolo, autore, copertina, fonteIndice: capitoliUnici.length ? "toc" : null };
+  return { frasi, metaFrasi, stiliFrasi, capitoli: capitoliUnici, titolo, autore, copertina, fonteIndice: capitoliUnici.length ? "toc" : null };
 }
 
 
@@ -2911,6 +3633,8 @@ async function analizzaMOBI(file) {
 
   const frasi = [];
   const metaFrasi = [];
+  const stiliFrasi = [];
+  const uscita = { frasi, metaFrasi, stiliFrasi, contatore: 0 };
   const capitoli = [];
   let contatoreParagrafi = 0;
 
@@ -2949,20 +3673,11 @@ async function analizzaMOBI(file) {
         : (corpoSezione.textContent || "").trim() ? [corpoSezione] : [];
 
       daLeggere.forEach((blocco) => {
-        const testo = normalizzaTipografia(blocco.textContent || "");
-        if (!testo.trim()) return;
-        const eIntestazione = /^H[1-6]$/i.test(blocco.tagName || "");
-        contatoreParagrafi += 1;
-        if (eIntestazione) capitoli.push({ titolo: testo.trim(), indiceFrase: frasi.length });
-        const frasiBlocco = eIntestazione ? [testo.trim()] : dividiInFrasi(testo);
-        frasiBlocco.forEach((frase) => {
-          frasi.push(frase);
-          metaFrasi.push({
-            tipo: eIntestazione ? "titolo" : "paragrafo",
-            paragrafo: contatoreParagrafi,
-            pagina: null,
-          });
-        });
+        const esito = accodaBloccoFormattato(blocco, uscita);
+        // Solo le intestazioni esplicite diventano capitoli dell'indice:
+        // i titoli impliciti (blocchi brevi in grassetto) sono spesso
+        // titoletti di paragrafo, troppo fitti per un indice utile.
+        if (esito && esito.esplicito) capitoli.push({ titolo: esito.titolo, indiceFrase: esito.indiceFrase });
       });
     } catch (erroreSezione) {
       // Una sezione illeggibile non deve impedire l'importazione del
@@ -2991,6 +3706,7 @@ async function analizzaMOBI(file) {
   return {
     frasi,
     metaFrasi,
+    stiliFrasi,
     capitoli,
     titolo,
     autore,
@@ -4505,8 +5221,8 @@ const ControllerTTS = (() => {
   const AMPIEZZA_FINESTRA = 60;
   const MARGINE_RICOSTRUZIONE = 15;
   const INTERVALLO_MINIMO_SALVATAGGIO_MS = 3000;
-  const VERSIONE_APP = "6.10";
-  const DATA_VERSIONE_APP = "17 settembre 2026";
+  const VERSIONE_APP = "7.0";
+  const DATA_VERSIONE_APP = "23 settembre 2026";
 
   const DIMENSIONI_CARATTERE = [0.88, 0.96, 1.04, 1.14, 1.26, 1.4, 1.56];
   const INDICE_DIMENSIONE_PREDEFINITO = 2;
@@ -4531,7 +5247,8 @@ const ControllerTTS = (() => {
      Le due mappe qui sotto traducono fra i due spazi. */
 
   let unitaDiLettura = [];
-  let mappaUnitaAFrase = [];   // indice unità -> indice frase
+  let mappaUnitaAFrase = [];
+  let offsetUnita = [];     // posizione di ogni unità nella propria frase   // indice unità -> indice frase
   let mappaFraseAUnita = [];   // indice frase -> prima unità corrispondente
 
   let impostazioniLettura = {
@@ -4547,14 +5264,17 @@ const ControllerTTS = (() => {
     ricostruisciParagrafi: true,
   };
 
+  // Temi dell'interfaccia. Seppia, grigio e le varianti su nero sono
+  // diventati colori della PAGINA (pannello Aa): riguardano la lettura,
+  // non i menu. I temi salvati con le versioni precedenti vengono
+  // convertiti una sola volta, vedi migraTemaPrecedente.
   const TEMI = [
     { id: "chiaro", nome: "Chiaro" },
     { id: "scuro", nome: "Scuro" },
-    { id: "seppia", nome: "Seppia" },
-    { id: "grigio", nome: "Grigio" },
-    { id: "amoled-ambra", nome: "AMOLED ambra" },
-    { id: "amoled-rosso", nome: "AMOLED rosso (notte)" },
+    { id: "automatico", nome: "Automatico" },
   ];
+  const preferenzaScura = window.matchMedia ? window.matchMedia("(prefers-color-scheme: dark)") : null;
+  let temaScelto = "chiaro";
 
   /* Coda di lettura (multi-selezione di paragrafi).
 
@@ -4625,7 +5345,11 @@ const ControllerTTS = (() => {
 
   async function applicaTema(tema) {
     const valido = TEMI.some((t) => t.id === tema) ? tema : "chiaro";
-    document.documentElement.setAttribute("data-theme", valido);
+    temaScelto = valido;
+    const effettivo = valido === "automatico"
+      ? (preferenzaScura && preferenzaScura.matches ? "scuro" : "chiaro")
+      : valido;
+    document.documentElement.setAttribute("data-theme", effettivo);
     Array.from(document.querySelectorAll("#selettore-temi button")).forEach((b) =>
       b.classList.toggle("attivo", b.dataset.tema === valido)
     );
@@ -4635,8 +5359,7 @@ const ControllerTTS = (() => {
   // Il pulsante rapido nella barra di lettura scorre ciclicamente i temi,
   // così da restare raggiungibile con un tocco senza aprire le impostazioni.
   async function alternaTema() {
-    const attuale = document.documentElement.getAttribute("data-theme") || "chiaro";
-    const posizione = TEMI.findIndex((t) => t.id === attuale);
+    const posizione = TEMI.findIndex((t) => t.id === temaScelto);
     const prossimo = TEMI[(posizione + 1) % TEMI.length];
     await applicaTema(prossimo.id);
     mostraToast(`Tema: ${prossimo.nome}`, 1800);
@@ -4791,7 +5514,7 @@ const ControllerTTS = (() => {
           risultato = await analizzaEPUB(buffer);
         } else if (estensione === "txt") {
           const testo = await file.text();
-          risultato = await analizzaTXT(testo);
+          risultato = await analizzaTXT(testo, { markdown: estensioneNome === "md" });
         } else if (estensione === "mobi") {
           // I formati Kindle vengono passati come File: il modulo legge
           // il file per porzioni, senza caricarlo interamente in memoria.
@@ -4815,6 +5538,7 @@ const ControllerTTS = (() => {
           dataImportazione: new Date().toISOString(),
           frasi: risultato.frasi,
           metaFrasi: risultato.metaFrasi || null,
+          stiliFrasi: risultato.stiliFrasi || null,
           copertina: risultato.copertina || null,
           capitoli: risultato.capitoli || [{ titolo: "Inizio", indiceFrase: 0 }],
           capitoliRicostruiti: risultato.capitoliRicostruiti || false,
@@ -4895,6 +5619,7 @@ const ControllerTTS = (() => {
     if (!libroCorrente) return;
     unitaDiLettura = [];
     mappaUnitaAFrase = [];
+    offsetUnita = [];
     mappaFraseAUnita = new Array(libroCorrente.frasi.length);
 
     libroCorrente.frasi.forEach((frase, indiceFrase) => {
@@ -4902,9 +5627,17 @@ const ControllerTTS = (() => {
         ? spezzaRispettandoPunteggiatura(frase, impostazioniLettura.limiteCaratteri)
         : [frase];
       mappaFraseAUnita[indiceFrase] = unitaDiLettura.length;
+      // Le unità sono porzioni esatte della frase: la loro posizione vi
+      // si ritrova con una ricerca progressiva, e serve ad applicare la
+      // formattazione, i cui intervalli sono riferiti alla frase intera.
+      let cursore = 0;
       pezzi.forEach((pezzo) => {
+        let posizione = frase.indexOf(pezzo, cursore);
+        if (posizione < 0) posizione = cursore;
+        cursore = posizione + pezzo.length;
         unitaDiLettura.push(pezzo);
         mappaUnitaAFrase.push(indiceFrase);
+        offsetUnita.push(posizione);
       });
     });
   }
@@ -4996,12 +5729,17 @@ const ControllerTTS = (() => {
     const blocchiHtml = [];
     let paragrafoCorrente = null;
     let tipoCorrente = null;
+    let livelloCorrente = null;
     let accumulate = [];
+    const stiliLibro = libroCorrente && libroCorrente.stiliFrasi;
 
     const chiudiBlocco = () => {
       if (!accumulate.length) return;
-      const tag = tipoCorrente === "titolo" ? "h4" : "p";
-      const classi = tipoCorrente === "titolo" ? "blocco-titolo" : "blocco-paragrafo";
+      // Livello 1 → h2, 2 → h3, dal 3 in giù → h4: h1 resta al titolo
+      // dell'applicazione.
+      const livello = Math.min(3, Math.max(1, livelloCorrente || 3));
+      const tag = tipoCorrente === "titolo" ? `h${livello + 1}` : "p";
+      const classi = tipoCorrente === "titolo" ? `blocco-titolo titolo-livello-${livello}` : "blocco-paragrafo";
       const selezionato = paragrafiSelezionati.has(paragrafoCorrente) ? " selezionato" : "";
       blocchiHtml.push(
         `<${tag} class="${classi}${selezionato}" data-paragrafo="${paragrafoCorrente}">${accumulate.join("")}</${tag}>`
@@ -5016,9 +5754,11 @@ const ControllerTTS = (() => {
         chiudiBlocco();
         paragrafoCorrente = meta.paragrafo;
         tipoCorrente = meta.tipo;
+        livelloCorrente = meta.livello;
       }
+      const stili = stiliLibro ? stiliLibro[indiceFrase] : null;
       accumulate.push(
-        `<span class="frase" data-indice="${i}">${escapeHtml(unitaDiLettura[i])} </span>`
+        `<span class="frase" data-indice="${i}">${rendiConStili(unitaDiLettura[i], stili, offsetUnita[i] || 0)} </span>`
       );
     }
     chiudiBlocco();
@@ -5038,7 +5778,12 @@ const ControllerTTS = (() => {
     const nodoAttivo = pannelloTesto.querySelector(`.frase[data-indice="${indice}"]`);
     if (nodoAttivo) {
       nodoAttivo.classList.add("attiva");
-      nodoAttivo.scrollIntoView({ block: "center", behavior: "smooth" });
+      // Sul telefono, con il pannello rapido aperto, il centro dello
+      // schermo cade sotto il pannello: il passaggio va portato nella
+      // parte ancora visibile, altrimenti ogni modifica di carattere o
+      // colore avverrebbe su un testo nascosto.
+      if (pannelloAperto && !window.matchMedia("(min-width: 900px)").matches) portaInVistaPassaggio();
+      else nodoAttivo.scrollIntoView({ block: "center", behavior: "smooth" });
     }
   }
 
@@ -5287,6 +6032,8 @@ const ControllerTTS = (() => {
   function applicaDimensioneCarattere() {
     const dimensione = DIMENSIONI_CARATTERE[indiceDimensioneCarattere];
     pannelloTesto.style.fontSize = dimensione + "rem";
+    el("etichetta-dimensione").textContent =
+      `${Math.round((dimensione / DIMENSIONI_CARATTERE[INDICE_DIMENSIONE_PREDEFINITO]) * 100)}%`;
     LibreriaDB.impostaImpostazione("indiceDimensioneCarattere", indiceDimensioneCarattere);
   }
 
@@ -5764,6 +6511,7 @@ const ControllerTTS = (() => {
     if (salvata && ordinate.some((v) => v.voiceURI === salvata)) selettore.value = salvata;
     ControllerTTS.impostaVoce(selettore.value);
     aggiornaStatoVoce();
+    aggiornaEtichettaVoce();
   }
 
   function aggiornaStatoVoce() {
@@ -5967,6 +6715,188 @@ const ControllerTTS = (() => {
     });
   }
 
+  /* ---------- Pagina di lettura ---------- */
+
+  let impostazioniPagina = {
+    colore: "crema",
+    font: "literata",
+    interlinea: "1.62",
+    margini: "medi",
+    allineamento: "giustificato",
+  };
+
+  // "Di sistema" non richiede alcuno scaricamento: resta leggibile anche
+  // senza rete al primo avvio, quando i caratteri web non sono ancora in
+  // memoria.
+  const FONT_LETTURA = {
+    literata: "'Literata', Georgia, 'Iowan Old Style', 'Palatino Linotype', serif",
+    sans: "'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif",
+    leggibile: "'Atkinson Hyperlegible', system-ui, -apple-system, sans-serif",
+    sistema: "Georgia, 'Iowan Old Style', 'Palatino Linotype', 'URW Palladio L', P052, serif",
+  };
+  const MARGINI_LETTURA = { stretti: "14px", medi: "24px", ampi: "40px" };
+  const NOMI_COLORI_PAGINA = {
+    bianco: "bianco", crema: "crema", seppia: "seppia", grigio: "grigio",
+    nero: "nero", ambra: "nero, testo ambra", rosso: "nero, testo rosso",
+  };
+
+  function applicaImpostazioniPagina(salva = true) {
+    const radice = document.documentElement;
+    radice.setAttribute("data-pagina", impostazioniPagina.colore);
+    radice.style.setProperty("--font-lettura", FONT_LETTURA[impostazioniPagina.font] || FONT_LETTURA.literata);
+    radice.style.setProperty("--interlinea-lettura", impostazioniPagina.interlinea);
+    radice.style.setProperty("--margine-lettura", MARGINI_LETTURA[impostazioniPagina.margini] || "24px");
+    radice.style.setProperty("--allineamento-lettura", impostazioniPagina.allineamento === "sinistra" ? "left" : "justify");
+
+    document.querySelectorAll("#pannello-rapido [data-impostazione]").forEach((gruppo) => {
+      const chiave = gruppo.dataset.impostazione;
+      gruppo.querySelectorAll("[data-valore]").forEach((pulsante) => {
+        const attivo = String(impostazioniPagina[chiave]) === pulsante.dataset.valore;
+        pulsante.classList.toggle("attivo", attivo);
+        pulsante.setAttribute("aria-pressed", attivo ? "true" : "false");
+      });
+    });
+    el("etichetta-colore-pagina").textContent = NOMI_COLORI_PAGINA[impostazioniPagina.colore] || impostazioniPagina.colore;
+    if (salva) LibreriaDB.impostaImpostazione("pagina", { ...impostazioniPagina });
+  }
+
+  /* Conversione una tantum dei temi delle versioni precedenti, in cui
+     seppia, grigio e le varianti AMOLED coloravano l'intera app: ora
+     diventano colori della pagina, con l'interfaccia chiara o scura più
+     adatta. Il colore della pagina si imposta solo se l'utente non ne ha
+     ancora scelto uno. */
+  function migraTemaPrecedente(temaSalvato, paginaSalvata) {
+    const conversioni = {
+      giorno: { tema: "chiaro" },
+      notte: { tema: "scuro" },
+      seppia: { tema: "chiaro", colore: "seppia" },
+      grigio: { tema: "scuro", colore: "grigio" },
+      "amoled-ambra": { tema: "scuro", colore: "ambra" },
+      "amoled-rosso": { tema: "scuro", colore: "rosso" },
+    };
+    const conversione = conversioni[temaSalvato];
+    if (!conversione) return { tema: temaSalvato, pagina: paginaSalvata };
+    const pagina = paginaSalvata || (conversione.colore ? { colore: conversione.colore } : null);
+    return { tema: conversione.tema, pagina };
+  }
+
+  /* ---------- Pannello delle impostazioni rapide ---------- */
+
+  let pannelloAperto = false;
+
+  function portaInVistaPassaggio() {
+    const attiva = pannelloTesto.querySelector(".frase.attiva");
+    const contenitore = pannelloTesto.closest(".area-testo-scorrevole");
+    if (!attiva || !contenitore) return;
+    const scarto = attiva.getBoundingClientRect().top - contenitore.getBoundingClientRect().top;
+    contenitore.scrollTo({ top: contenitore.scrollTop + scarto - 56, behavior: "smooth" });
+  }
+
+  function apriPannello() {
+    const pannello = el("pannello-rapido");
+    pannelloAperto = true;
+    pannello.removeAttribute("inert");
+    pannello.classList.add("aperto");
+    document.body.classList.add("pannello-aperto");
+    el("bottone-aa").setAttribute("aria-expanded", "true");
+    aggiornaInterfacciaEqualizzatore();
+    // Dopo la transizione, perché la posizione dipende dallo spazio
+    // lasciato libero dal pannello.
+    setTimeout(portaInVistaPassaggio, 240);
+  }
+
+  function chiudiPannello() {
+    const pannello = el("pannello-rapido");
+    pannelloAperto = false;
+    pannello.classList.remove("aperto");
+    pannello.setAttribute("inert", "");
+    document.body.classList.remove("pannello-aperto");
+    el("bottone-aa").setAttribute("aria-expanded", "false");
+  }
+
+  function mostraScheda(nome) {
+    document.querySelectorAll("#pannello-rapido .schede-pannello [data-scheda]").forEach((scheda) => {
+      scheda.setAttribute("aria-selected", scheda.dataset.scheda === nome ? "true" : "false");
+    });
+    document.querySelectorAll("#pannello-rapido .scheda-pannello").forEach((sezione) => {
+      sezione.hidden = sezione.dataset.scheda !== nome;
+    });
+  }
+
+  /* ---------- Modalità immersiva ---------- */
+
+  function impostaImmersiva(attiva) {
+    document.body.classList.toggle("immersiva", attiva);
+    el("bottone-esci-immersivo").hidden = !attiva;
+    if (attiva) {
+      chiudiPannello();
+      mostraToast("Comandi nascosti. Tocca il pulsante in basso a destra per mostrarli.", 3500);
+    }
+  }
+
+  /* ---------- Voce in uso, accanto alla velocità ---------- */
+
+  function aggiornaEtichettaVoce() {
+    const selettoreVoce = el("selettore-voce");
+    const opzione = selettoreVoce.options[selettoreVoce.selectedIndex];
+    const nomeVoce = opzione ? opzione.textContent.split(/\s[—(]/)[0].trim() : "";
+    const nomiMotore = { webspeech: "voce di sistema", piper: "Piper", mms: "MMS" };
+    const motore = nomiMotore[el("selettore-motore").value] || "";
+    el("etichetta-voce-attiva").textContent = [nomeVoce, motore].filter(Boolean).join(" · ");
+  }
+
+  function collegaInterfacciaLettura() {
+    el("bottone-aa").addEventListener("click", () => (pannelloAperto ? chiudiPannello() : apriPannello()));
+    el("maniglia-pannello").addEventListener("click", chiudiPannello);
+
+    document.querySelectorAll("#pannello-rapido .schede-pannello [data-scheda]").forEach((scheda) => {
+      scheda.addEventListener("click", () => mostraScheda(scheda.dataset.scheda));
+    });
+
+    document.querySelectorAll("#pannello-rapido [data-impostazione]").forEach((gruppo) => {
+      gruppo.addEventListener("click", (evento) => {
+        const pulsante = evento.target.closest("[data-valore]");
+        if (!pulsante) return;
+        impostazioniPagina[gruppo.dataset.impostazione] = pulsante.dataset.valore;
+        applicaImpostazioniPagina();
+        // Interlinea e margini cambiano l'altezza del testo: il passaggio
+        // in lettura va riportato nella parte visibile.
+        requestAnimationFrame(portaInVistaPassaggio);
+      });
+    });
+
+    // Gli strumenti che aprono un cassetto chiudono prima il pannello,
+    // per non sovrapporre due superfici.
+    document.querySelectorAll('#pannello-rapido [data-scheda="strumenti"] .bottone-strumento').forEach((pulsante) => {
+      if (pulsante.id === "bottone-tema") return;
+      pulsante.addEventListener("click", chiudiPannello);
+    });
+
+    el("bottone-immersivo").addEventListener("click", () => impostaImmersiva(true));
+    el("bottone-esci-immersivo").addEventListener("click", () => impostaImmersiva(false));
+
+    document.addEventListener("keydown", (evento) => {
+      if (evento.key !== "Escape") return;
+      if (pannelloAperto) chiudiPannello();
+      else if (document.body.classList.contains("immersiva")) impostaImmersiva(false);
+    });
+
+    // Tornando alla libreria il pannello si chiude e i comandi riappaiono.
+    el("bottone-indietro").addEventListener("click", () => {
+      chiudiPannello();
+      impostaImmersiva(false);
+    });
+
+    el("selettore-voce").addEventListener("change", aggiornaEtichettaVoce);
+    el("selettore-motore").addEventListener("change", () => setTimeout(aggiornaEtichettaVoce, 0));
+
+    if (preferenzaScura && preferenzaScura.addEventListener) {
+      preferenzaScura.addEventListener("change", () => {
+        if (temaScelto === "automatico") applicaTema("automatico");
+      });
+    }
+  }
+
   // ---------- Collegamento eventi ----------
 
   function collegaEventi() {
@@ -6030,9 +6960,11 @@ const ControllerTTS = (() => {
     function applicaVelocita(v) {
       const valore = Math.min(4, Math.max(0.5, Math.round(v * 10) / 10));
       velocitaSlider.value = valore;
-      velocitaEtichetta.textContent = `${valore.toFixed(1)}x`;
+      const testoVelocita = `${valore.toFixed(1).replace(".", ",")}×`;
+      velocitaEtichetta.textContent = testoVelocita;
+      el("velocita-etichetta-pannello").textContent = testoVelocita;
       el("slider-velocita-imp").value = valore;
-      el("velocita-imp-etichetta").textContent = `${valore.toFixed(1)}x`;
+      el("velocita-imp-etichetta").textContent = testoVelocita;
       ControllerTTS.impostaVelocita(valore);
       LibreriaDB.impostaImpostazione("velocita", valore);
     }
@@ -6240,7 +7172,12 @@ const ControllerTTS = (() => {
 
   async function avvia() {
     const temaSalvato = await LibreriaDB.ottieniImpostazione("tema", "chiaro");
-    await applicaTema(temaSalvato);
+    const paginaSalvata = await LibreriaDB.ottieniImpostazione("pagina", null);
+    const migrazione = migraTemaPrecedente(temaSalvato, paginaSalvata);
+    await applicaTema(migrazione.tema);
+    if (migrazione.pagina) impostazioniPagina = Object.assign(impostazioniPagina, migrazione.pagina);
+    applicaImpostazioniPagina(migrazione.pagina !== paginaSalvata);
+    collegaInterfacciaLettura();
 
     ControllerTTS.impostaCallback({
       onCambioFrase: (indice) => aggiornaVistaLettura(indice),
@@ -6291,7 +7228,9 @@ const ControllerTTS = (() => {
 
     const velocitaSalvata = await LibreriaDB.ottieniImpostazione("velocita", 1.0);
     velocitaSlider.value = velocitaSalvata;
-    velocitaEtichetta.textContent = `${velocitaSalvata.toFixed(1)}x`;
+    const testoVelocitaIniziale = `${velocitaSalvata.toFixed(1).replace(".", ",")}×`;
+    velocitaEtichetta.textContent = testoVelocitaIniziale;
+    el("velocita-etichetta-pannello").textContent = testoVelocitaIniziale;
     ControllerTTS.impostaVelocita(velocitaSalvata);
 
     const tonoSalvato = await LibreriaDB.ottieniImpostazione("tono", 1.0);
